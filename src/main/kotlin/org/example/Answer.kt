@@ -1,6 +1,7 @@
 import Direction.*
 import java.io.*
 import java.lang.Integer.max
+import java.lang.Math.abs
 import java.util.*
 import java.util.Comparator.comparing
 import java.util.Comparator.comparingInt
@@ -10,13 +11,50 @@ import java.util.Comparator.comparingInt
  **/
 fun main(args: Array<String>) {
     try {
-        val input = Scanner(System.`in`)
+//        val input = Scanner(System.`in`)
 //        val input = Scanner(TeeInputStream(System.`in`, System.err))
-//        val input = Scanner(
-//            StringReader(
-//                """""".trimIndent()
-//            )
-//        )
+        val input = Scanner(
+            StringReader(
+                """
+                    0
+                    1010 0101 1010 1001 0101 1001 1010
+                    0101 1001 1010 1011 0111 0110 1110
+                    1101 0110 0110 1010 0101 1001 0111
+                    1011 0110 1101 1101 0110 1001 0101
+                    1010 1110 1101 1110 1010 0101 1001
+                    1010 1100 1011 1001 0111 0101 1010
+                    1001 0110 1010 1010 0110 1010 0110
+                    7 5 1 0111
+                    11 5 3 0011
+                    18
+                    CANDY -1 -1 0
+                    ARROW 2 3 0
+                    SCROLL 4 4 0
+                    SWORD 5 6 0
+                    SWORD 6 0 1
+                    ARROW 4 1 1
+                    DIAMOND 3 1 1
+                    CANDY 3 3 1
+                    SCROLL 2 0 1
+                    SHIELD 3 4 1
+                    POTION 5 5 1
+                    CANE 3 5 1
+                    MASK 3 0 1
+                    BOOK 1 3 1
+                    SHIELD 2 5 0
+                    POTION 1 0 0
+                    FISH -2 -2 1
+                    MASK 1 6 0
+                    6
+                    SWORD 0
+                    MASK 0
+                    CANDY 0
+                    DIAMOND 1
+                    FISH 1
+                    SWORD 1
+                """.trimIndent()
+            )
+        )
 
         // game loop
         while (true) {
@@ -73,15 +111,37 @@ fun main(args: Array<String>) {
                             (6 - itemToMove.itemY) to DOWN
                         ).minBy { it.first }!!.second
 
-                        val rowCol = if (direction == UP || direction == DOWN){
+                        val rowCol = if (direction == UP || direction == DOWN) {
                             itemToMove.itemX
-                        }else {
+                        } else {
                             itemToMove.itemY
                         }
 
                         println("PUSH $rowCol $direction")
                     } else {
-                        println("PUSH ${max(0, we.playerY - 1)} $RIGHT")
+
+                        fun PushAndMove.point(): Point {
+                            return when (this.direction) {
+                                UP -> Point(this.rowColumn, 6)
+                                DOWN -> Point(this.rowColumn, 0)
+                                LEFT -> Point(6, this.rowColumn)
+                                RIGHT -> Point(0, this.rowColumn)
+                            }
+                        }
+
+                        val comparator =
+                            compareBy<PushAndMove> { it.pathElem.deep }
+                                .thenComparingInt {
+                                    -abs(we.playerX - it.point().x) - abs(
+                                        we.playerY - it.point().y
+                                    )
+                                }
+                        val bestPush = pushes.maxWith(comparator)
+                        if (bestPush != null) {
+                            println("PUSH ${bestPush.rowColumn} ${bestPush.direction}")
+                        } else {
+                            println("PUSH ${max(0, we.playerY - 1)} $RIGHT")
+                        }
                     }
                 }
             } else {
