@@ -57,15 +57,29 @@ fun main(args: Array<String>) {
                         paths.map { PushAndMove(rowColumn, direction, it) }
                     }
                 }
-                val comparator = compareBy<PushAndMove> { it.pathElem.itemsTaken.size }.thenComparingInt { -it.pathElem.deep }
+                val comparator =
+                    compareBy<PushAndMove> { it.pathElem.itemsTaken.size }.thenComparingInt { -it.pathElem.deep }
                 val bestPush = pushes.maxWith(comparator)
                 if (bestPush != null && bestPush.pathElem.itemsTaken.isNotEmpty()) {
                     println("PUSH ${bestPush.rowColumn} ${bestPush.direction}")
                 } else {
                     val ourItems = items.filter { it.itemPlayerId == 0 && ourQuests.contains(it.itemName) }
-                    val itemToMove = ourItems.maxBy { it.itemX }
+                    val itemToMove = ourItems.minBy { listOf(it.itemX, 6 - it.itemX, it.itemY, 6 - it.itemY).min()!! }
                     if (itemToMove != null && !itemToMove.isOnHand) {
-                        println("PUSH ${itemToMove.itemY} $RIGHT")
+                        val direction = listOf(
+                            itemToMove.itemX to LEFT,
+                            (6 - itemToMove.itemX) to RIGHT,
+                            itemToMove.itemY to UP,
+                            (6 - itemToMove.itemY) to DOWN
+                        ).minBy { it.first }!!.second
+
+                        val rowCol = if (direction == UP || direction == DOWN){
+                            itemToMove.itemX
+                        }else {
+                            itemToMove.itemY
+                        }
+
+                        println("PUSH $rowCol $direction")
                     } else {
                         println("PUSH ${max(0, we.playerY - 1)} $RIGHT")
                     }
@@ -122,7 +136,7 @@ data class PathElem(val point: Point, val itemsTaken: Set<String>) {
 
 class GameBoard(board: List<List<Field>>) {
     val board = board.mapIndexed { y, row ->
-        row.mapIndexed{x, field ->
+        row.mapIndexed { x, field ->
             field.copy(item = field.item?.copy(itemX = x, itemY = y))
         }
     }
@@ -145,11 +159,12 @@ class GameBoard(board: List<List<Field>>) {
         }
 
         val initialItem = board[point].item
-        val initial = if (initialItem!=null && initialItem.itemPlayerId == 0 && quests.contains(initialItem.itemName)){
-            PathElem(point, setOf(initialItem.itemName))
-        } else {
-            PathElem(point, emptySet())
-        }
+        val initial =
+            if (initialItem != null && initialItem.itemPlayerId == 0 && quests.contains(initialItem.itemName)) {
+                PathElem(point, setOf(initialItem.itemName))
+            } else {
+                PathElem(point, emptySet())
+            }
 
         val visited = mutableMapOf(initial to DOWN)
 
