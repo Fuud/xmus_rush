@@ -2,6 +2,8 @@ import Direction.*
 import java.io.*
 import java.lang.Integer.max
 import java.util.*
+import java.util.Comparator.comparing
+import java.util.Comparator.comparingInt
 
 /**
  * Help the Christmas elves fetch presents in a magical labyrinth!
@@ -11,7 +13,9 @@ fun main(args: Array<String>) {
         val input = Scanner(System.`in`)
 //        val input = Scanner(TeeInputStream(System.`in`, System.err))
 //        val input = Scanner(
-//            StringReader("""""".trimIndent())
+//            StringReader(
+//                """""".trimIndent()
+//            )
 //        )
 
         // game loop
@@ -53,7 +57,8 @@ fun main(args: Array<String>) {
                         paths.map { PushAndMove(rowColumn, direction, it) }
                     }
                 }
-                val bestPush = pushes.maxBy { it.pathElem.itemsTaken.size }
+                val comparator = compareBy<PushAndMove> { it.pathElem.itemsTaken.size }.thenComparingInt { -it.pathElem.deep }
+                val bestPush = pushes.maxWith(comparator)
                 if (bestPush != null && bestPush.pathElem.itemsTaken.isNotEmpty()) {
                     println("PUSH ${bestPush.rowColumn} ${bestPush.direction}")
                 } else {
@@ -112,27 +117,39 @@ data class Field(
 data class PathElem(val point: Point, val itemsTaken: Set<String>) {
     var prev: PathElem? = null
     var direction: Direction? = null
+    var deep: Int = 0
 }
 
-class GameBoard(val board: List<List<Field>>) {
+class GameBoard(board: List<List<Field>>) {
+    val board = board.mapIndexed { y, row ->
+        row.mapIndexed{x, field ->
+            field.copy(item = field.item?.copy(itemX = x, itemY = y))
+        }
+    }
 
 
     fun findPaths(point: Point, quests: List<String>): List<PathElem> {
         fun PathElem.move(direction: Direction): PathElem {
-            val item = board[this.point].item
+            val newPoint = this.point.move(direction)
+            val item = board[newPoint].item
             val newItems = if (item != null && item.itemPlayerId == 0 && quests.contains(item.itemName)) {
                 this.itemsTaken + item.itemName
             } else {
                 this.itemsTaken
             }
-            val newPoint = this.point.move(direction)
             return copy(point = newPoint, itemsTaken = newItems).apply {
                 this.prev = this@move
                 this.direction = direction
+                this.deep = this@move.deep + 1
             }
         }
 
-        val initial = PathElem(point, emptySet())
+        val initialItem = board[point].item
+        val initial = if (initialItem!=null && initialItem.itemPlayerId == 0 && quests.contains(initialItem.itemName)){
+            PathElem(point, setOf(initialItem.itemName))
+        } else {
+            PathElem(point, emptySet())
+        }
 
         val visited = mutableMapOf(initial to DOWN)
 
@@ -266,7 +283,14 @@ class Player(input: Scanner) {
     }
 }
 
-class Item(input: Scanner) {
+data class Item(val itemName: String, val itemX: Int, val itemY: Int, val itemPlayerId: Int) {
+    constructor(input: Scanner) : this(
+        itemName = input.next(),
+        itemX = input.nextInt(),
+        itemY = input.nextInt(),
+        itemPlayerId = input.nextInt()
+    )
+
     fun push(direction: Direction, rowColumn: Int): Point {
         return if (isOnHand) {
             when (direction) {
@@ -302,10 +326,6 @@ class Item(input: Scanner) {
         }
     }
 
-    val itemName = input.next()
-    val itemX = input.nextInt()
-    val itemY = input.nextInt()
-    val itemPlayerId = input.nextInt()
     val point: Point = Point(itemX, itemY)
     val isOnHand: Boolean = itemX < 0
     val isOnOurHand: Boolean = itemX == -1
@@ -331,7 +351,6 @@ enum class Direction(val mask: Int) {
             RIGHT -> LEFT
         }
 }
-
 
 
 fun <T> List<List<T>>.transpose(): List<List<T>> {
