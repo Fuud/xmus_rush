@@ -3,72 +3,34 @@ import java.io.*
 import java.lang.Integer.max
 import java.lang.Math.abs
 import java.util.*
-import java.util.Comparator.comparing
-import java.util.Comparator.comparingInt
 
 /**
  * Help the Christmas elves fetch presents in a magical labyrinth!
  **/
 fun main(args: Array<String>) {
     try {
-//        val input = Scanner(System.`in`)
+        val input = Scanner(System.`in`)
 //        val input = Scanner(TeeInputStream(System.`in`, System.err))
-        val input = Scanner(
-            StringReader(
-                """
-                    0
-                    1010 0101 1010 1001 0101 1001 1010
-                    0101 1001 1010 1011 0111 0110 1110
-                    1101 0110 0110 1010 0101 1001 0111
-                    1011 0110 1101 1101 0110 1001 0101
-                    1010 1110 1101 1110 1010 0101 1001
-                    1010 1100 1011 1001 0111 0101 1010
-                    1001 0110 1010 1010 0110 1010 0110
-                    7 5 1 0111
-                    11 5 3 0011
-                    18
-                    CANDY -1 -1 0
-                    ARROW 2 3 0
-                    SCROLL 4 4 0
-                    SWORD 5 6 0
-                    SWORD 6 0 1
-                    ARROW 4 1 1
-                    DIAMOND 3 1 1
-                    CANDY 3 3 1
-                    SCROLL 2 0 1
-                    SHIELD 3 4 1
-                    POTION 5 5 1
-                    CANE 3 5 1
-                    MASK 3 0 1
-                    BOOK 1 3 1
-                    SHIELD 2 5 0
-                    POTION 1 0 0
-                    FISH -2 -2 1
-                    MASK 1 6 0
-                    6
-                    SWORD 0
-                    MASK 0
-                    CANDY 0
-                    DIAMOND 1
-                    FISH 1
-                    SWORD 1
-                """.trimIndent()
-            )
-        )
+//        val input = Scanner(
+//            StringReader(
+//                """""".trimIndent()
+//            )
+//        )
 
         // game loop
         while (true) {
             val turnType = input.nextInt() // 0 - push, 1 - move
             val board = Board(input)
 
-            val we = Player(input)
-            val enemy = Player(input)
+            val we = Player(0, input)
+            val enemy = Player(1, input)
 
 
             val items = (0 until input.nextInt()).map { Item(input) }
             val quests = (0 until input.nextInt()).map { Quest(input) }
 
             val ourQuests = quests.filter { it.questPlayerId == 0 }.map { it.questItemName }
+            val enemyQuests = quests.filter { it.questPlayerId == 1 }.map { it.questItemName }
 
             val gameBoard = GameBoard(
                 board.board.mapIndexed { y, row ->
@@ -84,68 +46,90 @@ fun main(args: Array<String>) {
             // To debug: System.err.println("Debug messages...");
             if (turnType == 0) {
                 val fieldOnHand = Field(we.playerTile, items.singleOrNull { it.isOnOurHand })
+                val fieldOnEnemyHand = Field(enemy.playerTile, items.singleOrNull { it.isOnEnemyHand })
 
-                data class PushAndMove(val rowColumn: Int, val direction: Direction, val pathElem: PathElem)
+                data class PushAndMove(
+                    val ourRowColumn: Int,
+                    val ourDirection: Direction,
+                    val enemyRowColumn: Int,
+                    val enemyDirection: Direction,
+                    val ourPaths: List<PathElem>,
+                    val enemyPaths: List<PathElem>
+                )
 
                 val pushes = (0..6).flatMap { rowColumn ->
                     Direction.values().flatMap { direction ->
-                        val newBoard = gameBoard.push(fieldOnHand, direction, rowColumn)
-                        val ourPoint = we.push(direction, rowColumn)
-                        val paths = newBoard.findPaths(ourPoint, ourQuests)
-                        paths.map { PushAndMove(rowColumn, direction, it) }
+                        (0..6).flatMap { enemyRowColumn ->
+                            Direction.values().mapNotNull { enemyDirection ->
+                                if (enemyRowColumn == rowColumn && (direction == enemyDirection || direction == enemyDirection.opposite)) {
+                                    null
+                                } else {
+                                    data class Action(
+                                        val direction: Direction,
+                                        val rowColumn: Int,
+                                        val fieldOnHand: Field,
+                                        val isEnemy: Boolean
+                                    )
+
+                                    val sortedActions = listOf(
+                                        Action(direction, rowColumn, fieldOnHand, isEnemy = false),
+                                        Action(enemyDirection, enemyRowColumn, fieldOnEnemyHand, isEnemy = true)
+                                    ).sortedByDescending { it.direction.priority }
+
+                                    var newBoard = gameBoard
+                                    var ourPlayer = we
+                                    var enemyPlayer = enemy
+                                    sortedActions.forEach { (direction, rowColumn, fieldOnHand, isEnemy) ->
+                                        val (board, field) = newBoard.push(fieldOnHand, direction, rowColumn)
+                                        newBoard = board
+                                        ourPlayer = ourPlayer.push(
+                                            direction,
+                                            rowColumn,
+                                            newTile = if (isEnemy) ourPlayer.playerTile else field.tile
+                                        )
+                                        enemyPlayer = enemyPlayer.push(
+                                            direction,
+                                            rowColumn,
+                                            newTile = if (!isEnemy) enemyPlayer.playerTile else field.tile
+                                        )
+                                    }
+                                    val ourPaths = newBoard.findPaths(ourPlayer, ourQuests)
+                                    val enemyPaths = newBoard.findPaths(enemyPlayer, enemyQuests)
+
+                                    PushAndMove(
+                                        ourRowColumn = rowColumn,
+                                        ourDirection = direction,
+                                        enemyRowColumn = enemyRowColumn,
+                                        enemyDirection = enemyDirection,
+                                        ourPaths = ourPaths,
+                                        enemyPaths = enemyPaths
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
                 val comparator =
-                    compareBy<PushAndMove> { it.pathElem.itemsTaken.size }.thenComparingInt { -it.pathElem.deep }
+                    compareBy<PushAndMove> { it.ourPaths.maxBy { it.itemsTaken.size }?.itemsTaken?.size ?: 0 }
                 val bestPush = pushes.maxWith(comparator)
-                if (bestPush != null && bestPush.pathElem.itemsTaken.isNotEmpty()) {
-                    println("PUSH ${bestPush.rowColumn} ${bestPush.direction}")
-                } else {
-                    val ourItems = items.filter { it.itemPlayerId == 0 && ourQuests.contains(it.itemName) }
-                    val itemToMove = ourItems.minBy { listOf(it.itemX, 6 - it.itemX, it.itemY, 6 - it.itemY).min()!! }
-                    if (itemToMove != null && !itemToMove.isOnHand) {
-                        val direction = listOf(
-                            itemToMove.itemX to LEFT,
-                            (6 - itemToMove.itemX) to RIGHT,
-                            itemToMove.itemY to UP,
-                            (6 - itemToMove.itemY) to DOWN
-                        ).minBy { it.first }!!.second
 
-                        val rowCol = if (direction == UP || direction == DOWN) {
-                            itemToMove.itemX
-                        } else {
-                            itemToMove.itemY
-                        }
+                val (bestMove, bestScore) = pushes
+                    .groupBy { it.ourDirection to it.ourRowColumn }
+                    .maxBy { (_, pushesAndMoves) ->
+                        val score =  pushesAndMoves.map {
+                            val enemyScore = it.enemyPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
+                            val ourScore = it.ourPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
+                            ourScore - enemyScore
+                        }.min()!!
+                        score
+                    }!!
 
-                        println("PUSH $rowCol $direction")
-                    } else {
+                val (bestDirection, bestRowColumn) = bestMove
 
-                        fun PushAndMove.point(): Point {
-                            return when (this.direction) {
-                                UP -> Point(this.rowColumn, 6)
-                                DOWN -> Point(this.rowColumn, 0)
-                                LEFT -> Point(6, this.rowColumn)
-                                RIGHT -> Point(0, this.rowColumn)
-                            }
-                        }
+                println("PUSH $bestRowColumn $bestDirection")
 
-                        val comparator =
-                            compareBy<PushAndMove> { it.pathElem.deep }
-                                .thenComparingInt {
-                                    -abs(we.playerX - it.point().x) - abs(
-                                        we.playerY - it.point().y
-                                    )
-                                }
-                        val bestPush = pushes.maxWith(comparator)
-                        if (bestPush != null) {
-                            println("PUSH ${bestPush.rowColumn} ${bestPush.direction}")
-                        } else {
-                            println("PUSH ${max(0, we.playerY - 1)} $RIGHT")
-                        }
-                    }
-                }
             } else {
-                val paths = gameBoard.findPaths(we.point, ourQuests)
+                val paths = gameBoard.findPaths(we, ourQuests)
                 val bestPath = paths.maxBy { it.itemsTaken.size }
                 if (bestPath != null && bestPath.itemsTaken.isNotEmpty()) {
                     val directions = mutableListOf<Direction>()
@@ -179,11 +163,11 @@ class Board(val board: List<List<Tile>>) {
 }
 
 data class Field(
-    val cell: Tile,
+    val tile: Tile,
     val item: Item?
 ) {
     fun connect(field: Field, direction: Direction): Boolean {
-        return this.cell.connect(field.cell, direction)
+        return this.tile.connect(field.tile, direction)
     }
 
 }
@@ -202,11 +186,11 @@ class GameBoard(board: List<List<Field>>) {
     }
 
 
-    fun findPaths(point: Point, quests: List<String>): List<PathElem> {
+    fun findPaths(player: Player, quests: List<String>): List<PathElem> {
         fun PathElem.move(direction: Direction): PathElem {
             val newPoint = this.point.move(direction)
             val item = board[newPoint].item
-            val newItems = if (item != null && item.itemPlayerId == 0 && quests.contains(item.itemName)) {
+            val newItems = if (item != null && item.itemPlayerId == player.playerId && quests.contains(item.itemName)) {
                 this.itemsTaken + item.itemName
             } else {
                 this.itemsTaken
@@ -218,12 +202,12 @@ class GameBoard(board: List<List<Field>>) {
             }
         }
 
-        val initialItem = board[point].item
+        val initialItem = board[player.point].item
         val initial =
-            if (initialItem != null && initialItem.itemPlayerId == 0 && quests.contains(initialItem.itemName)) {
-                PathElem(point, setOf(initialItem.itemName))
+            if (initialItem != null && initialItem.itemPlayerId == player.playerId && quests.contains(initialItem.itemName)) {
+                PathElem(player.point, setOf(initialItem.itemName))
             } else {
-                PathElem(point, emptySet())
+                PathElem(player.point, emptySet())
             }
 
         val visited = mutableMapOf(initial to DOWN)
@@ -246,24 +230,30 @@ class GameBoard(board: List<List<Field>>) {
         return visited.keys.toList()
     }
 
-    fun push(field: Field, direction: Direction, rowColumn: Int): GameBoard {
+    fun push(field: Field, direction: Direction, rowColumn: Int): Pair<GameBoard, Field> {
         if (direction == LEFT || direction == RIGHT) {
             val mutableBoard = board.toMutableList()
+            val field: Field
             if (direction == LEFT) {
+                field = board[rowColumn][0]
                 mutableBoard[rowColumn] = board[rowColumn].drop(1) + listOf(field)
             } else {
+                field = board[rowColumn].last()
                 mutableBoard[rowColumn] = listOf(field) + board[rowColumn].dropLast(1)
             }
-            return GameBoard(mutableBoard)
+            return GameBoard(mutableBoard) to field
         } else {
             val board = board.transpose()
             val mutableBoard = board.toMutableList()
+            val field: Field
             if (direction == UP) {
+                field = board[rowColumn][0]
                 mutableBoard[rowColumn] = board[rowColumn].drop(1) + listOf(field)
             } else {
+                field = board[rowColumn].last()
                 mutableBoard[rowColumn] = listOf(field) + board[rowColumn].dropLast(1)
             }
-            return GameBoard(mutableBoard.transpose())
+            return GameBoard(mutableBoard.transpose()) to field
         }
     }
 
@@ -332,27 +322,38 @@ enum class Tile(val mask: Int) {
 }
 
 
-class Player(input: Scanner) {
-    val numPlayerCards = input.nextInt() // the total number of quests for a player (hidden and revealed)
-    val playerX = input.nextInt()
-    val playerY = input.nextInt()
-    val playerTile = Tile.read(input)
+data class Player(
+    val playerId: Int,
+    val numPlayerCards: Int,
+    val playerX: Int,
+    val playerY: Int,
+    val playerTile: Tile
+) {
+
+    constructor(playerId: Int, input: Scanner) : this(
+        playerId = playerId,
+        numPlayerCards = input.nextInt(), // the total number of quests for a player (hidden and revealed)
+        playerX = input.nextInt(),
+        playerY = input.nextInt(),
+        playerTile = Tile.read(input)
+    )
+
     val point: Point = Point(playerX, playerY)
 
-    fun push(direction: Direction, rowColumn: Int): Point {
+    fun push(direction: Direction, rowColumn: Int, newTile: Tile): Player {
         return if (direction == UP || direction == DOWN) {
             if (playerX != rowColumn) {
-                this.point
+                this
             } else {
                 val newPlayerY = (playerY + (if (direction == UP) -1 else 1) + 7) % 7
-                Point(playerX, newPlayerY)
+                return copy(playerY = newPlayerY, playerTile = newTile)
             }
         } else {
             if (playerY != rowColumn) {
-                this.point
+                this
             } else {
                 val newPlayerX = (playerX + (if (direction == LEFT) -1 else 1) + 7) % 7
-                Point(newPlayerX, playerY)
+                return copy(playerX = newPlayerX, playerTile = newTile)
             }
         }
     }
@@ -412,11 +413,11 @@ class Quest(input: Scanner) {
     val questPlayerId = input.nextInt()
 }
 
-enum class Direction(val mask: Int) {
-    UP(0b1000),
-    RIGHT(0b0100),
-    DOWN(0b0010),
-    LEFT(0b0001);
+enum class Direction(val mask: Int, val isVertical: Boolean, val priority: Int) {
+    UP(0b1000, true, priority = 0),
+    RIGHT(0b0100, false, priority = 1),
+    DOWN(0b0010, true, priority = 0),
+    LEFT(0b0001, false, priority = 1);
 
     val opposite: Direction
         get() = when (this) {
