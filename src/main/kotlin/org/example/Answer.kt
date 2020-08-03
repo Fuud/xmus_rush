@@ -1,7 +1,8 @@
 import Direction.*
-import java.io.*
-import java.lang.Integer.max
-import java.lang.Math.abs
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
+import java.io.StringReader
 import java.util.*
 
 /**
@@ -9,16 +10,34 @@ import java.util.*
  **/
 fun main(args: Array<String>) {
     try {
-        val input = Scanner(System.`in`)
+//        val input = Scanner(System.`in`)
 //        val input = Scanner(TeeInputStream(System.`in`, System.err))
-//        val input = Scanner(
-//            StringReader(
-//                """""".trimIndent()
-//            )
-//        )
+        val input = Scanner(
+            StringReader(
+                """
+                    0
+                    0110 0110 0110 1110 1010 1101 1011
+                    1011 1010 1111 1010 0011 1110 1001
+                    1011 1010 0101 1001 0011 0111 0111
+                    1101 0011 0101 1010 0101 1100 1110
+                    0110 1101 1100 0110 0101 1010 1110
+                    1101 1011 1100 1010 1111 1010 1001
+                    0110 1110 0111 1010 1011 1001 1001
+                    1 1 0 1001
+                    1 6 6 0111
+                    2
+                    KEY -2 -2 0
+                    KEY 0 5 1
+                    2
+                    KEY 0
+                    KEY 1
+                """.trimIndent()
+            )
+        )
 
         // game loop
         while (true) {
+            System.err.println("S" + System.currentTimeMillis() % 1000)
             val turnType = input.nextInt() // 0 - push, 1 - move
             val board = Board(input)
 
@@ -54,7 +73,9 @@ fun main(args: Array<String>) {
                     val enemyRowColumn: Int,
                     val enemyDirection: Direction,
                     val ourPaths: List<PathElem>,
-                    val enemyPaths: List<PathElem>
+                    val enemyPaths: List<PathElem>,
+                    val ourDomain: DomainStat,
+                    val enemyDomain: DomainStat
                 )
 
                 val pushes = (0..6).flatMap { rowColumn ->
@@ -93,32 +114,36 @@ fun main(args: Array<String>) {
                                             newTile = if (!isEnemy) enemyPlayer.playerTile else field.tile
                                         )
                                     }
-                                    val ourPaths = newBoard.findPaths(ourPlayer, ourQuests)
-                                    val enemyPaths = newBoard.findPaths(enemyPlayer, enemyQuests)
 
+//                                    val ourPaths = newBoard.findPaths(ourPlayer, ourQuests)
+//                                    val enemyPaths = newBoard.findPaths(enemyPlayer, enemyQuests)
+
+                                    val domains = newBoard.getDomainStats()
                                     PushAndMove(
                                         ourRowColumn = rowColumn,
                                         ourDirection = direction,
                                         enemyRowColumn = enemyRowColumn,
                                         enemyDirection = enemyDirection,
-                                        ourPaths = ourPaths,
-                                        enemyPaths = enemyPaths
+                                        ourPaths = listOf(),
+                                        enemyPaths = listOf(),
+                                        ourDomain = domains[ourPlayer.point]!!,
+                                        enemyDomain = domains[enemyPlayer.point]!!
                                     )
                                 }
                             }
                         }
                     }
                 }
-                val comparator =
-                    compareBy<PushAndMove> { it.ourPaths.maxBy { it.itemsTaken.size }?.itemsTaken?.size ?: 0 }
-                val bestPush = pushes.maxWith(comparator)
+//                val comparator =
+//                    compareBy<PushAndMove> { it.ourPaths.maxBy { it.itemsTaken.size }?.itemsTaken?.size ?: 0 }
+//                val bestPush = pushes.maxWith(comparator)
 
                 val (bestMove, bestScore) = pushes
                     .groupBy { it.ourDirection to it.ourRowColumn }
                     .maxBy { (_, pushesAndMoves) ->
-                        val score =  pushesAndMoves.map {
-                            val enemyScore = it.enemyPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
-                            val ourScore = it.ourPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
+                        val score = pushesAndMoves.map {
+                            val enemyScore = it.enemyDomain.questCount(enemy, enemyQuests)
+                            val ourScore = it.ourDomain.questCount(we, ourQuests)
                             ourScore - enemyScore
                         }.min()!!
                         score
@@ -144,6 +169,7 @@ fun main(args: Array<String>) {
                     println("PASS")
                 }
             }
+            System.err.println("E" + System.currentTimeMillis() % 1000)
         }
     } catch (t: Throwable) {
         t.printStackTrace()
@@ -178,6 +204,12 @@ data class PathElem(val point: Point, val itemsTaken: Set<String>) {
     var deep: Int = 0
 }
 
+class DomainStat(var items: List<Item>, var size: Int) {
+    fun questCount(player: Player, quests: List<String>): Int =
+        items.filter { it.itemPlayerId == player.playerId && quests.contains(it.itemName) }.size
+
+}
+
 class GameBoard(board: List<List<Field>>) {
     val board = board.mapIndexed { y, row ->
         row.mapIndexed { x, field ->
@@ -185,6 +217,52 @@ class GameBoard(board: List<List<Field>>) {
         }
     }
 
+    fun getDomainStats(): Map<Point, DomainStat> {
+        var id = 0
+        val id2domain = mutableMapOf<Int, DomainStat>()
+        val point2id = mutableMapOf<Point, Int>()
+        for (x in (0..6)) {
+            for (y in (0..6)) {
+                val p = Point(x, y)
+                val field = board[p]
+                val left = p.moveLeft()
+                val up = p.moveUp()
+                val leftConnect = point2id.contains(left) && field.connect(board[left], LEFT)
+                val upConnect = point2id.contains(up) && field.connect(board[up], UP)
+                if (leftConnect && upConnect) {
+                    val leftId = point2id[left]!!
+                    val upId = point2id[up]!!
+                    if (leftId == upId) {
+                        val stat = id2domain[leftId]!!
+                        stat.size++
+                        if (field.item != null) {
+                            stat.items += field.item
+                        }
+                    } else {
+                        val leftStat = id2domain[leftId]!!
+                        val upStat = id2domain[upId]!!
+                        upStat.size += leftStat.size + 1
+                        upStat.items += leftStat.items
+                        id2domain[leftId] = upStat
+                    }
+                    point2id[p]=upId
+                } else if (!leftConnect && !upConnect) {
+                    id2domain[id] = DomainStat(listOfNotNull(field.item), 1)
+                    point2id[p]=id
+                    id++
+                } else {
+                    val connectedId = if (leftConnect) point2id[left]!! else point2id[up]!!
+                    val stat = id2domain[connectedId]!!
+                    stat.size++
+                    if (field.item != null) {
+                        stat.items += field.item
+                    }
+                    point2id[p]=connectedId
+                }
+            }
+        }
+        return point2id.mapValues { (_, id) -> id2domain[id]!! }
+    }
 
     fun findPaths(player: Player, quests: List<String>): List<PathElem> {
         fun PathElem.move(direction: Direction): PathElem {
