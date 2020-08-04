@@ -11,55 +11,12 @@ import kotlin.system.measureTimeMillis
 fun main(args: Array<String>) {
     try {
 //        val input = Scanner(System.`in`)
-//        val input = Scanner(TeeInputStream(System.`in`, System.err))
-        val input = Scanner(
-            StringReader(
-                """
-                    0
-                    0110 1101 0111 0011 0101 1101 0110
-                    1010 1010 0011 1010 1010 1010 1100
-                    0111 1010 0111 1111 1001 1001 1010
-                    1101 1001 0110 1010 1101 0110 0111
-                    1010 0110 1010 1100 1100 1010 1101
-                    0011 1010 0101 1100 1101 1010 1010
-                    1001 0111 1011 1010 1010 0111 1001
-                    12 0 0 0011
-                    12 6 6 1110
-                    24
-                    DIAMOND 5 4 1
-                    BOOK 3 0 1
-                    SWORD 5 5 0
-                    SCROLL 3 1 0
-                    SHIELD 2 3 0
-                    FISH 4 4 0
-                    CANDY 3 5 1
-                    POTION 1 0 0
-                    CANDY -1 -1 0
-                    ARROW 4 3 0
-                    KEY 5 1 1
-                    DIAMOND 1 2 0
-                    CANE 2 6 1
-                    MASK 0 4 1
-                    SCROLL 3 3 1
-                    KEY 1 5 0
-                    BOOK 3 4 0
-                    SWORD 1 1 1
-                    POTION 5 6 1
-                    MASK 6 2 0
-                    FISH 2 1 1
-                    CANE -2 -2 0
-                    SHIELD 4 2 1
-                    ARROW 2 2 1
-                    6
-                    FISH 0
-                    CANE 0
-                    KEY 0
-                    FISH 1
-                    CANE 1
-                    KEY 1
-                """.trimIndent()
-            )
-        )
+        val input = Scanner(TeeInputStream(System.`in`, System.err))
+//        val input = Scanner(
+//            StringReader(
+//                """""".trimIndent()
+//            )
+//        )
 
         // game loop
         while (true) {
@@ -103,13 +60,13 @@ fun main(args: Array<String>) {
             // To debug: System.err.println("Debug messages...");
             if (turnType == 0) {
 
-                while (true) {
-                    val duration = measureTimeMillis {
-                        val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests)
-                        println("PUSH ${bestMove.rowColumn} ${bestMove.direction}")
-                    }
-                    System.err.println("Duration: $duration")
+//                while (true) {
+                val duration = measureTimeMillis {
+                    val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests)
+                    println("PUSH ${bestMove.rowColumn} ${bestMove.direction}")
                 }
+                System.err.println("Duration: $duration")
+//                }
             } else {
                 val paths = gameBoard.findPaths(we, ourQuests)
                 val bestPath = paths.maxBy { it.itemsTaken.size }
@@ -234,7 +191,7 @@ private fun findBestPush(
 
                 val otherItemsScore = it.board.board.mapIndexedNotNull { y, row ->
                     val scores = row.mapIndexedNotNull { x, field ->
-                        if (field.item == null || !ourQuests.contains(field.item.itemName)) {
+                        if (field.item == null || field.item.itemPlayerId != we.playerId || !ourQuests.contains(field.item.itemName)) {
                             null
                         } else {
                             max(abs(3 - x), abs(3 - y))
@@ -288,6 +245,10 @@ data class PathElem(val point: Point, val itemsTaken: Set<String>) {
 }
 
 class GameBoard(val board: List<List<Field>>) {
+    companion object {
+        val pooledList1 = arrayListOf<PathElem>()
+        val pooledList2 = arrayListOf<PathElem>()
+    }
 
     fun findPaths(player: Player, quests: List<String>): List<PathElem> {
         fun PathElem.move(direction: Direction): PathElem {
@@ -315,13 +276,16 @@ class GameBoard(val board: List<List<Field>>) {
 
         val visited = mutableMapOf(initial to DOWN)
 
-        var front = listOf<PathElem>(initial)
+        pooledList1.clear()
+        pooledList2.clear()
+        var front = pooledList1
+        front.add(initial)
 
         repeat(20) {
-            if (front.isEmpty()){
+            if (front.isEmpty()) {
                 return@repeat
             }
-            front = front.asSequence().flatMap { pathElem ->
+            front.asSequence().flatMap { pathElem ->
                 Direction.values()
                     .asSequence()
                     .filter { pathElem.point.can(it) }
@@ -331,7 +295,9 @@ class GameBoard(val board: List<List<Field>>) {
                         visited[pathElem] = direction
                         pathElem
                     }
-            }.toList()
+            }.toCollection(if (front == pooledList1) pooledList2 else pooledList1)
+            front.clear()
+            front = if (front == pooledList1) pooledList2 else pooledList1
         }
 
         return visited.keys.toList()
