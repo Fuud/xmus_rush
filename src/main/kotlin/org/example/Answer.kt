@@ -284,23 +284,29 @@ class GameBoard(val board: List<List<Field>>) {
         var front = pooledList1
         front.add(initial)
 
+
         repeat(20) {
             if (front.isEmpty()) {
                 return@repeat
             }
-            front.asSequence().flatMap { pathElem ->
-                Direction.values()
-                    .asSequence()
-                    .filter { pathElem.point.can(it) }
-                    .map { pathElem.move(it) to it }
-                    .filterNot { (pathElem, _) -> visited.containsKey(pathElem) }
-                    .map { (pathElem, direction) ->
-                        visited[pathElem] = direction
-                        pathElem
+
+            val newFront = if (front == pooledList1) pooledList2 else pooledList1
+            newFront.clear()
+
+            for (pathElem in front) {
+                for (direction in Direction.values()) {
+                    if (!pathElem.point.can(direction)){
+                        continue
                     }
-            }.toCollection(if (front == pooledList1) pooledList2 else pooledList1)
-            front.clear()
-            front = if (front == pooledList1) pooledList2 else pooledList1
+                    val newPathElem = pathElem.move(direction)
+                    if (visited.containsKey(newPathElem)){
+                        continue
+                    }
+                    visited[newPathElem] = direction
+                    newFront.add(newPathElem)
+                }
+            }
+            front = newFront
         }
 
         return visited.keys.toList()
