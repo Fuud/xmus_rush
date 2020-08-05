@@ -1,5 +1,8 @@
 import Direction.*
-import java.io.*
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
+import java.io.StringReader
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.max
@@ -372,7 +375,7 @@ class GameBoard(val board: List<List<Field>>) {
                     } else if (y == 6 && direction == UP) {
                         field
                     } else {
-                        row[y + shift]
+                        board[y + shift][rowColumn]
                     }
                 }
             }
