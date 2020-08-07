@@ -14,41 +14,47 @@ object Test {
             StringReader(
                 """
                     0
-                    0101 0111 0110 0101 1100 0011 0110
-                    0111 1001 1100 1011 1010 0011 1101
-                    1001 1010 1010 1110 0110 1101 0101
-                    0101 0111 0110 1001 0110 1010 1010
-                    0011 1010 0101 1010 1011 1110 1001
-                    0101 1010 0011 1010 1010 1101 1100
-                    0111 1010 1010 1100 0111 1101 1010
-                    9 5 5 1001
-                    9 0 1 1101
-                    18
-                    KEY 5 1 1
-                    BOOK 4 4 0
-                    SHIELD 3 5 0
-                    BOOK 3 2 1
-                    MASK 4 0 0
-                    CANE 0 5 0
-                    POTION 2 1 0
-                    DIAMOND 1 5 0
-                    FISH 3 1 0
-                    MASK 0 4 1
-                    DIAMOND 1 2 1
-                    POTION 5 0 1
-                    ARROW 6 5 0
-                    SWORD 1 6 0
-                    CANE 3 0 1
-                    ARROW 2 5 1
-                    SHIELD 4 1 1
-                    FISH 5 4 1
+                    0101 0110 0011 0011 0011 0011 1010
+                    1010 1110 0101 1001 1010 0101 0111
+                    0011 1101 0011 0011 0101 1101 0111
+                    1101 1101 1011 1010 1110 0111 1100
+                    1101 0111 0101 1100 1100 0111 1010
+                    1010 0101 1010 0110 0101 1011 0101
+                    1010 1010 1100 1100 1100 1100 1001
+                    12 1 0 1010
+                    12 6 6 1010
+                    24
+                    KEY 4 0 0
+                    POTION 5 4 0
+                    BOOK -2 -2 1
+                    DIAMOND 5 0 1
+                    FISH 4 3 1
+                    MASK 3 2 1
+                    POTION 1 2 1
+                    CANDY 0 2 1
+                    FISH 2 3 0
+                    SHIELD 6 4 1
+                    SHIELD 0 1 0
+                    BOOK 0 5 0
+                    SWORD 6 0 0
+                    SCROLL 5 6 0
+                    SWORD 1 6 1
+                    CANDY 6 3 0
+                    DIAMOND 2 6 0
+                    ARROW 6 5 1
+                    CANE 5 5 1
+                    ARROW 0 0 0
+                    KEY 3 6 1
+                    SCROLL 2 0 1
+                    MASK 3 4 0
+                    CANE 1 1 0
                     6
-                    SWORD 0
-                    CANE 0
-                    DIAMOND 0
-                    KEY 1
-                    CANE 1
-                    DIAMOND 1
+                    POTION 0
+                    SCROLL 0
+                    BOOK 0
+                    POTION 1
+                    SCROLL 1
+                    BOOK 1
                 """.trimIndent()
             )
         )
@@ -112,14 +118,14 @@ fun main(args: Array<String>) {
             } else {
                 val paths = gameBoard.findPaths(we, ourQuests)
 
-                val pathsComparator = compareBy<PathElem> {pathElem ->
+                val pathsComparator = compareBy<PathElem> { pathElem ->
                     pathElem.itemsTaken.size
-                }.thenComparing {pathElem ->
+                }.thenComparing { pathElem ->
                     max(abs(pathElem.point.x - 3), abs(pathElem.point.y - 3))
                 }
 
                 val bestPath = paths.maxWith(pathsComparator)
-                if (bestPath != null && bestPath.itemsTaken.isNotEmpty()) {
+                if (bestPath != null) {
                     val directions = mutableListOf<Direction>()
                     var pathElem: PathElem = bestPath
                     while (pathElem.prev != null) {
@@ -127,7 +133,11 @@ fun main(args: Array<String>) {
                         directions.add(0, direction)
                         pathElem = pathElem.prev!!
                     }
-                    println("MOVE " + directions.joinToString(separator = " "))
+                    if (directions.isEmpty()){
+                        println("PASS")
+                    }else{
+                        println("MOVE " + directions.joinToString(separator = " "))
+                    }
                 } else {
                     println("PASS")
                 }
@@ -448,11 +458,7 @@ data class Field(
 
 }
 
-data class PathElem(val point: Point, val itemsTaken: Set<String>) {
-    var prev: PathElem? = null
-    var direction: Direction? = null
-    var deep: Int = 0
-}
+data class PathElem(val point: Point, val itemsTaken: Set<String>, var prev: PathElem?, var direction: Direction?)
 
 class GameBoard(val board: List<List<Field>>) {
     companion object {
@@ -461,20 +467,14 @@ class GameBoard(val board: List<List<Field>>) {
     }
 
     fun findPaths(player: Player, quests: List<String>): List<PathElem> {
-        fun PathElem.move(direction: Direction): PathElem {
-            val newPoint = this.point.move(direction)
-            val item = board[newPoint].item
-            val newItems =
-                if (item != null && item.itemPlayerId == player.playerId && quests.contains(item.itemName)) {
-                    this.itemsTaken + item.itemName
-                } else {
-                    this.itemsTaken
-                }
-            return copy(point = newPoint, itemsTaken = newItems).apply {
-                this.prev = this@move
-                this.direction = direction
-                this.deep = this@move.deep + 1
-            }
+        fun coordInVisited(newPoint: Point, newItems: Collection<String>): Int {
+            val x = newPoint.x
+            val y = newPoint.y
+            val firstItem = if (quests.size > 0 && newItems.contains(quests[0])) 1 else 0
+            val secondItem = if (quests.size > 1 && newItems.contains(quests[1])) 1 else 0
+            val thirdItem = if (quests.size > 2 && newItems.contains(quests[2])) 1 else 0
+
+            return (((x * 7 + y) * 2 + firstItem) * 2 + secondItem) * 2 + thirdItem
         }
 
         val initialItem = board[player.point].item
@@ -483,18 +483,22 @@ class GameBoard(val board: List<List<Field>>) {
                     initialItem.itemName
                 )
             ) {
-                PathElem(player.point, setOf(initialItem.itemName))
+                PathElem(player.point, setOf(initialItem.itemName), null, null)
             } else {
-                PathElem(player.point, emptySet())
+                PathElem(player.point, emptySet(), null, null)
             }
 
-        val visited = mutableMapOf(initial to DOWN)
 
         pooledList1.clear()
         pooledList2.clear()
         var front = pooledList1
         front.add(initial)
 
+        val result = mutableListOf<PathElem>()
+
+        val visited = BitSet(7 * 7 * 8)
+        visited.set(coordInVisited(initial.point, initial.itemsTaken))
+        result.add(initial)
 
         repeat(20) {
             if (front.isEmpty()) {
@@ -509,18 +513,31 @@ class GameBoard(val board: List<List<Field>>) {
                     if (!pathElem.point.can(direction)) {
                         continue
                     }
-                    val newPathElem = pathElem.move(direction)
-                    if (visited.containsKey(newPathElem)) {
+                    val newPoint = pathElem.point.move(direction)
+                    val item = board[newPoint].item
+                    val newItems =
+                        if (item != null && item.itemPlayerId == player.playerId && quests.contains(item.itemName)) {
+                            pathElem.itemsTaken + item.itemName
+                        } else {
+                            pathElem.itemsTaken
+                        }
+
+                    val coordInVisisted = coordInVisited(newPoint, newItems)
+
+                    if (visited.get(coordInVisisted)) {
                         continue
                     }
-                    visited[newPathElem] = direction
+
+                    val newPathElem = PathElem(newPoint, newItems, pathElem, direction)
+                    visited.set(coordInVisisted)
+                    result.add(newPathElem)
                     newFront.add(newPathElem)
                 }
             }
             front = newFront
         }
 
-        return visited.keys.toList()
+        return result
     }
 
     fun push(field: Field, direction: Direction, rowColumn: Int): Pair<GameBoard, Field> {
@@ -591,17 +608,74 @@ private operator fun List<List<Field>>.get(point: Point): Field {
 }
 
 
-data class Point(val x: Int, val y: Int) {
-    fun moveUp() = copy(y = y - 1)
-    fun moveDown() = copy(y = y + 1)
-    fun moveLeft() = copy(x = x - 1)
-    fun moveRight() = copy(x = x + 1)
+class Point private constructor(val x: Int, val y: Int) {
+    var up: Point? = null
+    var down: Point? = null
+    var left: Point? = null
+    var right: Point? = null
 
     fun move(direction: Direction) = when (direction) {
-        UP -> moveUp()
-        DOWN -> moveDown()
-        LEFT -> moveLeft()
-        RIGHT -> moveRight()
+        UP -> up!!
+        DOWN -> down!!
+        LEFT -> left!!
+        RIGHT -> right!!
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as Point
+
+        if (x != other.x) return false
+        if (y != other.y) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = x
+        result = 31 * result + y
+        return result
+    }
+
+
+    companion object {
+        val points = (0..6).map { x ->
+            (0..6).map { y ->
+                Point(x, y)
+            }
+        }
+
+        val point_minus2 = Point(-2, -2)
+        val point_minus1 = Point(-1, -1)
+
+        init {
+            (0..6).forEach { x ->
+                (0..6).forEach { y ->
+                    if (x > 0) {
+                        points[x][y].left = points[x - 1][y]
+                    }
+                    if (x < 6) {
+                        points[x][y].right = points[x + 1][y]
+                    }
+                    if (y > 0) {
+                        points[x][y].up = points[x][y - 1]
+                    }
+                    if (y < 6) {
+                        points[x][y].down = points[x][y + 1]
+                    }
+                }
+            }
+        }
+
+        fun point(x: Int, y: Int): Point {
+            return when {
+                x >= 0 -> points[x][y]
+                x == -2 -> point_minus2
+                else -> point_minus1
+            }
+        }
     }
 }
 
@@ -647,7 +721,7 @@ data class Player(
         playerField = Field(Tile.read(input), item = null) // to be updated after items will be read
     )
 
-    val point: Point = Point(playerX, playerY)
+    val point: Point = Point.point(playerX, playerY)
 
     fun push(direction: Direction, rowColumn: Int, newField: Field): Player {
         return if (direction == UP || direction == DOWN) {
@@ -682,7 +756,7 @@ data class ItemDto(val itemName: String, val itemX: Int, val itemY: Int, val ite
         itemPlayerId = input.nextInt()
     )
 
-    val point: Point = Point(itemX, itemY)
+    val point: Point = Point.point(itemX, itemY)
     val isOnHand: Boolean = itemX < 0
     val isOnOurHand: Boolean = itemX == -1
     val isOnEnemyHand: Boolean = itemX == -2
