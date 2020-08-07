@@ -3,6 +3,7 @@ import java.io.*
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.system.measureTimeMillis
 
 
@@ -110,7 +111,14 @@ fun main(args: Array<String>) {
 //                }
             } else {
                 val paths = gameBoard.findPaths(we, ourQuests)
-                val bestPath = paths.maxBy { it.itemsTaken.size }
+
+                val pathsComparator = compareBy<PathElem> {pathElem ->
+                    pathElem.itemsTaken.size
+                }.thenComparing {pathElem ->
+                    max(abs(pathElem.point.x - 3), abs(pathElem.point.y - 3))
+                }
+
+                val bestPath = paths.maxWith(pathsComparator)
                 if (bestPath != null && bestPath.itemsTaken.isNotEmpty()) {
                     val directions = mutableListOf<Direction>()
                     var pathElem: PathElem = bestPath
