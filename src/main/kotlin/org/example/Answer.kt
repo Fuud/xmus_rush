@@ -59,8 +59,13 @@ object Test {
         )
 
         val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input)
-        val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests)
-        println(bestMove)
+        while (true) {
+            val duration = measureTimeMillis {
+                val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests)
+                println(bestMove)
+            }
+            println(duration)
+        }
     }
 }
 
@@ -198,12 +203,15 @@ private fun findBestPush(
     enemyQuests: List<String>
 ): PushAction {
 
-    val pushes = (0..6).asSequence().flatMap { rowColumn ->
-        Direction.values().asSequence().flatMap { direction ->
-            (0..6).asSequence().flatMap { enemyRowColumn ->
-                Direction.values().asSequence().mapNotNull { enemyDirection ->
+    val pushes = mutableListOf<PushAndMove>()
+
+
+    for (rowColumn in (0..6)) {
+        for (direction in Direction.values()) {
+            for (enemyRowColumn in (0..6)) {
+                for (enemyDirection in Direction.values()) {
                     if (enemyRowColumn == rowColumn && (direction == enemyDirection || direction == enemyDirection.opposite)) {
-                        null
+                        continue
                     } else {
                         data class Action(
                             val direction: Direction,
@@ -242,27 +250,29 @@ private fun findBestPush(
                         val ourPaths = newBoard.findPaths(ourPlayer, ourQuests)
                         val enemyPaths = newBoard.findPaths(enemyPlayer, enemyQuests)
 
-                        PushAndMove(
-                            ourRowColumn = rowColumn,
-                            ourDirection = direction,
-                            enemyRowColumn = enemyRowColumn,
-                            enemyDirection = enemyDirection,
-                            ourPaths = ourPaths,
-                            enemyPaths = enemyPaths,
-                            ourFieldOnHand = ourPlayer.playerField,
-                            enemyFieldOnHand = enemyPlayer.playerField,
-                            board = newBoard,
-                            ourPlayer = ourPlayer,
-                            enemyPlayer = enemyPlayer,
-                            ourQuests = ourQuests,
-                            enemyQuests = enemyQuests
+                        pushes.add(
+                            PushAndMove(
+                                ourRowColumn = rowColumn,
+                                ourDirection = direction,
+                                enemyRowColumn = enemyRowColumn,
+                                enemyDirection = enemyDirection,
+                                ourPaths = ourPaths,
+                                enemyPaths = enemyPaths,
+                                ourFieldOnHand = ourPlayer.playerField,
+                                enemyFieldOnHand = enemyPlayer.playerField,
+                                board = newBoard,
+                                ourPlayer = ourPlayer,
+                                enemyPlayer = enemyPlayer,
+                                ourQuests = ourQuests,
+                                enemyQuests = enemyQuests
+                            )
                         )
                     }
+
                 }
             }
         }
     }
-
 
     val comparator =
         compareBy<List<PushAndMove>>(PushSelectors.itemsCountDiff_50p)
