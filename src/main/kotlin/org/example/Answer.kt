@@ -131,6 +131,8 @@ fun main(args: Array<String>) {
                     pathElem.itemsTaken.size
                 }.thenComparing { pathElem ->
                     max(abs(pathElem.point.x - 3), abs(pathElem.point.y - 3))
+                }.thenComparing { pathElem ->
+                    gameBoard.board[pathElem.point].tile.roads
                 }
 
                 val bestPath = paths.maxWith(pathsComparator)
@@ -692,18 +694,18 @@ class Point private constructor(val x: Int, val y: Int) {
     }
 }
 
-enum class Tile(val mask: Int) {
-    T0011(0b0011),
-    T0101(0b0101),
-    T0110(0b0110),
-    T1001(0b1001),
-    T1010(0b1010),
-    T1100(0b1100),
-    T0111(0b0111),
-    T1011(0b1011),
-    T1101(0b1101),
-    T1110(0b1110),
-    T1111(0b1111);
+enum class Tile(val mask: Int, val roads: Int) {
+    T0011(0b0011, 2),
+    T0101(0b0101, 2),
+    T0110(0b0110, 2),
+    T1001(0b1001, 2),
+    T1010(0b1010, 2),
+    T1100(0b1100, 2),
+    T0111(0b0111, 3),
+    T1011(0b1011, 3),
+    T1101(0b1101, 3),
+    T1110(0b1110, 3),
+    T1111(0b1111, 4);
 
     companion object {
         fun read(input: Scanner): Tile {
