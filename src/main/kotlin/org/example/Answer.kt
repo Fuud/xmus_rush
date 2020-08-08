@@ -66,7 +66,7 @@ object Test {
             )
         )
 
-        val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input)
+        val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input, 0)
         while (true) {
             val duration = measureTimeMillis {
                 val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests, PushAction(LEFT, 1))
@@ -93,9 +93,11 @@ fun main(args: Array<String>) {
         // game loop
         var lastBoard: GameBoard? = null
         var lastPush: PushAction? = null
+        var turn = 0
 
         repeat(150) { step ->
-            val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input)
+            val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input, turn)
+            turn++
 
             // Write an action using println()
             // To debug: System.err.println("Debug messages...");
@@ -152,11 +154,11 @@ fun main(args: Array<String>) {
         }
     } catch (t: Throwable) {
         t.printStackTrace()
-        throw t;
+        throw t
     }
 }
 
-private fun readInput(input: Scanner): InputConditions {
+private fun readInput(input: Scanner, turn: Int): InputConditions {
     val turnType = input.nextInt() // 0 - push, 1 - move
     val board = BoardDto(input)
 
@@ -164,7 +166,7 @@ private fun readInput(input: Scanner): InputConditions {
     val ourTile = Tile.read(input)
 
     val enemy = Player(1, input)
-    var enemyTile = Tile.read(input)
+    val enemyTile = Tile.read(input)
 
     val items = (0 until input.nextInt()).map { ItemDto(input) }
     val quests = (0 until input.nextInt()).map { Quest(input) }
@@ -183,7 +185,7 @@ private fun readInput(input: Scanner): InputConditions {
                     items.singleOrNull { it.itemX == x && it.itemY == y }?.toItem()
                 )
             }
-        }, ourField, enemyField
+        }, ourField, enemyField, turn
     )
 
     return InputConditions(turnType, gameBoard, ourQuests, enemyQuests, we, enemy)
@@ -240,7 +242,11 @@ private fun findBestPush(
         (0..6)
     }
 
-    val forbiddenPushMoves = if (lastPushOnDraw != null && we.numPlayerCards > enemy.numPlayerCards) {
+    val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
+            || (we.numPlayerCards == enemy.numPlayerCards && gameBoard.turn < 50))
+    val forbiddenPushMoves = if (lastPushOnDraw != null &&
+        weLoseOrDrawAtEarlyGame
+    ) {
         listOf(lastPushOnDraw, lastPushOnDraw.copy(direction = lastPushOnDraw.direction.opposite))
     } else {
         emptyList()
@@ -462,7 +468,7 @@ data class Field(
 
 data class PathElem(val point: Point, val itemsTaken: Set<String>, var prev: PathElem?, var direction: Direction?)
 
-class GameBoard(val board: List<List<Field>>, val ourField: Field, val enemyField: Field) {
+class GameBoard(val board: List<List<Field>>, val ourField: Field, val enemyField: Field, val turn: Int) {
     val fields = arrayOf(ourField, enemyField)
 
     companion object {
@@ -587,7 +593,7 @@ class GameBoard(val board: List<List<Field>>, val ourField: Field, val enemyFiel
         }
         val newFields = fields.copyOf()
         newFields[player.playerId] = newField
-        return GameBoard(newBoard, newFields[0], newFields[1])
+        return GameBoard(newBoard, newFields[0], newFields[1], turn + 1)
     }
 
 
