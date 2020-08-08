@@ -114,6 +114,10 @@ fun main(args: Array<String>) {
                     if (step == 0) {
                         findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests)
                         findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests)
+                        findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests)
+                        findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests)
+                        findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests)
+                        findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests)
                     }
 
                     println("PUSH ${bestMove.rowColumn} ${bestMove.direction}")
