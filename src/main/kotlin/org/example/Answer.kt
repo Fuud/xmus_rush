@@ -14,47 +14,47 @@ object Test {
             StringReader(
                 """
                     0
-                    0101 0110 0011 0011 0011 0011 1010
-                    1010 1110 0101 1001 1010 0101 0111
-                    0011 1101 0011 0011 0101 1101 0111
-                    1101 1101 1011 1010 1110 0111 1100
-                    1101 0111 0101 1100 1100 0111 1010
-                    1010 0101 1010 0110 0101 1011 0101
-                    1010 1010 1100 1100 1100 1100 1001
-                    12 1 0 1010
-                    12 6 6 1010
+                    0110 1010 0111 0101 1010 1101 1010
+                    0110 0101 0101 0111 1010 0111 0101
+                    0111 0110 1001 0110 0111 0110 1010
+                    0111 0011 0110 1010 1001 1100 1101
+                    1010 1001 1101 1001 0110 1001 1101
+                    0101 1101 1010 1101 0101 0101 1001
+                    1010 0111 1010 0101 1101 1010 1001
+                    12 0 0 0110
+                    12 6 6 1001
                     24
-                    KEY 4 0 0
-                    POTION 5 4 0
-                    BOOK -2 -2 1
-                    DIAMOND 5 0 1
-                    FISH 4 3 1
-                    MASK 3 2 1
-                    POTION 1 2 1
-                    CANDY 0 2 1
-                    FISH 2 3 0
-                    SHIELD 6 4 1
-                    SHIELD 0 1 0
-                    BOOK 0 5 0
-                    SWORD 6 0 0
-                    SCROLL 5 6 0
+                    CANE 2 2 1
+                    FISH 1 1 1
+                    SCROLL 6 2 1
+                    MASK 1 2 1
+                    CANDY 2 6 1
+                    SWORD 5 0 0
+                    SHIELD 4 1 0
+                    BOOK 5 3 1
+                    POTION 0 3 0
+                    SCROLL 0 4 0
+                    ARROW 2 1 1
+                    DIAMOND 0 2 1
+                    KEY 5 1 1
+                    CANDY 4 0 0
+                    ARROW 4 5 0
+                    SHIELD 2 5 1
+                    BOOK 1 3 0
+                    MASK 5 4 0
+                    CANE 4 4 0
                     SWORD 1 6 1
-                    CANDY 6 3 0
-                    DIAMOND 2 6 0
-                    ARROW 6 5 1
-                    CANE 5 5 1
-                    ARROW 0 0 0
-                    KEY 3 6 1
-                    SCROLL 2 0 1
-                    MASK 3 4 0
-                    CANE 1 1 0
+                    DIAMOND 6 4 0
+                    FISH 5 5 0
+                    POTION 6 3 1
+                    KEY 1 5 0
                     6
-                    POTION 0
                     SCROLL 0
-                    BOOK 0
-                    POTION 1
+                    KEY 0
+                    CANDY 0
                     SCROLL 1
-                    BOOK 1
+                    KEY 1
+                    CANDY 1
                 """.trimIndent()
             )
         )
@@ -133,9 +133,9 @@ fun main(args: Array<String>) {
                         directions.add(0, direction)
                         pathElem = pathElem.prev!!
                     }
-                    if (directions.isEmpty()){
+                    if (directions.isEmpty()) {
                         println("PASS")
-                    }else{
+                    } else {
                         println("MOVE " + directions.joinToString(separator = " "))
                     }
                 } else {
@@ -232,7 +232,7 @@ private fun findBestPush(
     val enemyDirections = if (lastPushOnDraw != null) {
         listOf(lastPushOnDraw.direction, lastPushOnDraw.direction.opposite)
     } else {
-        Direction.values().toList()
+        Direction.allDirections
     }
     val enemyRowColumns = if (lastPushOnDraw != null) {
         (lastPushOnDraw.rowColumn..lastPushOnDraw.rowColumn)
@@ -247,7 +247,7 @@ private fun findBestPush(
     }
 
     for (rowColumn in (0..6)) {
-        for (direction in Direction.values()) {
+        for (direction in Direction.allDirections) {
             if (forbiddenPushMoves.contains(PushAction(direction, rowColumn))) {
                 continue
             }
@@ -321,10 +321,10 @@ private fun findBestPush(
     }
 
     val comparator =
-        compareBy<List<PushAndMove>>(PushSelectors.itemsCountDiffMin)
-            .thenComparing(PushSelectors.itemsCountDiffAvg)
-            .thenComparing(PushSelectors.pushOutItemsAvg)
-            .thenComparing(PushSelectors.spaceAvg)
+        caching(PushSelectors.itemsCountDiffMin)
+            .thenComparing(caching(PushSelectors.itemsCountDiffAvg))
+            .thenComparing(caching(PushSelectors.pushOutItemsAvg))
+            .thenComparing(caching(PushSelectors.spaceAvg))
 
     //todo: comparator will be invoked multiple times on same entry. Better to cache calculated values
     val (bestMove, bestScore) = pushes
@@ -337,6 +337,15 @@ private fun findBestPush(
         })!!
 
     return bestMove
+}
+
+fun <U : Comparable<U>> caching(funct: (pushesAndMoves: List<PushAndMove>) -> Comparable<U>): Comparator<List<PushAndMove>> {
+    val cache = IdentityHashMap<Any, Any>()
+    return compareBy { pushesAndMoves: List<PushAndMove> ->
+        cache.computeIfAbsent(pushesAndMoves) {
+            funct(pushesAndMoves)
+        } as Comparable<U>
+    }
 }
 
 object PushSelectors {
@@ -505,11 +514,11 @@ class GameBoard(val board: List<List<Field>>) {
                 return@repeat
             }
 
-            val newFront = if (front == pooledList1) pooledList2 else pooledList1
+            val newFront = if (front === pooledList1) pooledList2 else pooledList1
             newFront.clear()
 
             for (pathElem in front) {
-                for (direction in Direction.values()) {
+                for (direction in Direction.allDirections) {
                     if (!pathElem.point.can(direction)) {
                         continue
                     }
@@ -782,6 +791,10 @@ enum class Direction(val mask: Int, val isVertical: Boolean, val priority: Int) 
             LEFT -> RIGHT
             RIGHT -> LEFT
         }
+
+    companion object{
+        val allDirections = Direction.values().toList()
+    }
 }
 
 
