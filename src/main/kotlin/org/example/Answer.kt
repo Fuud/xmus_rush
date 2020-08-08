@@ -1,4 +1,7 @@
 import Direction.*
+import PushSelectors.itemsCountDiff
+import PushSelectors.pushOutItems
+import PushSelectors.space
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -21,46 +24,46 @@ object Test {
             StringReader(
                 """
                     0
-                    0110 1010 0111 0101 1010 1101 1010
-                    0110 0101 0101 0111 1010 0111 0101
-                    0111 0110 1001 0110 0111 0110 1010
-                    0111 0011 0110 1010 1001 1100 1101
-                    1010 1001 1101 1001 0110 1001 1101
-                    0101 1101 1010 1101 0101 0101 1001
-                    1010 0111 1010 0101 1101 1010 1001
-                    12 0 0 0110
-                    12 6 6 1001
+                    0110 1001 1010 0101 0110 1001 1010
+                    1101 1010 1101 1001 0111 1011 0110
+                    0101 1010 0101 1001 0011 1010 1001
+                    0101 0111 1110 1010 1011 1101 0101
+                    0110 1010 1100 0110 0101 1010 0101
+                    1001 1110 1101 0110 0111 1010 0111
+                    1010 0110 1001 0101 1010 0110 1001
+                    12 0 0 0111
+                    12 6 6 1101
                     24
-                    CANE 2 2 1
-                    FISH 1 1 1
-                    SCROLL 6 2 1
-                    MASK 1 2 1
-                    CANDY 2 6 1
-                    SWORD 5 0 0
-                    SHIELD 4 1 0
-                    BOOK 5 3 1
-                    POTION 0 3 0
-                    SCROLL 0 4 0
-                    ARROW 2 1 1
-                    DIAMOND 0 2 1
-                    KEY 5 1 1
-                    CANDY 4 0 0
-                    ARROW 4 5 0
-                    SHIELD 2 5 1
-                    BOOK 1 3 0
-                    MASK 5 4 0
                     CANE 4 4 0
-                    SWORD 1 6 1
-                    DIAMOND 6 4 0
-                    FISH 5 5 0
-                    POTION 6 3 1
-                    KEY 1 5 0
+                    KEY 1 6 0
+                    SCROLL 2 3 1
+                    MASK 6 4 0
+                    SHIELD 6 0 1
+                    SHIELD 0 6 0
+                    POTION 3 2 0
+                    CANE 2 2 1
+                    POTION 3 4 1
+                    SWORD 1 0 0
+                    BOOK 5 5 0
+                    ARROW 0 1 1
+                    DIAMOND 5 4 0
+                    FISH 4 0 0
+                    CANDY 3 6 0
+                    KEY 5 0 1
+                    BOOK 1 1 1
+                    ARROW 6 5 0
+                    MASK 0 2 1
+                    FISH 2 6 1
+                    CANDY 3 0 1
+                    SCROLL 4 3 0
+                    SWORD 5 6 1
+                    DIAMOND 1 2 1
                     6
-                    SCROLL 0
-                    KEY 0
+                    CANE 0
+                    ARROW 0
                     CANDY 0
-                    SCROLL 1
-                    KEY 1
+                    CANE 1
+                    ARROW 1
                     CANDY 1
                 """.trimIndent()
             )
@@ -69,7 +72,7 @@ object Test {
         val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input, 0)
         while (true) {
             val duration = measureTimeMillis {
-                val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests, PushAction(LEFT, 1))
+                val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests)
                 println(bestMove)
             }
             println(duration)
@@ -331,7 +334,6 @@ private fun findBestPush(
             .thenComparing(caching(PushSelectors.pushOutItemsAvg))
             .thenComparing(caching(PushSelectors.spaceAvg))
 
-    //todo: comparator will be invoked multiple times on same entry. Better to cache calculated values
     val (bestMove, bestScore) = pushes
         .groupBy { PushAction(it.ourDirection, it.ourRowColumn) }
         .maxWith(Comparator { left, right ->
@@ -341,7 +343,47 @@ private fun findBestPush(
             )
         })!!
 
+   // println(PushResultTable(pushes))
+
     return bestMove
+}
+
+class PushResultTable(pushes: List<PushAndMove>) {
+    data class PushResult(val itemsCountDiff: Int, val pushOutItems: Int, val space: Int)
+
+    fun calcPushResult(push: PushAndMove): PushResult {
+        return PushResult(
+            itemsCountDiff(push),
+            pushOutItems(push),
+            space(push)
+        )
+    }
+
+    val table = pushes
+        .groupBy { PushAction(it.ourDirection, it.ourRowColumn) }
+        .mapValues { it.value.map { PushAction(it.enemyDirection, it.enemyRowColumn) to calcPushResult(it) }.toMap() }
+
+    override fun toString(): String {
+        val header =
+            "our\\enemy |  " + Direction.allDirections.flatMap { dir -> (0..6).map { rc -> "${dir.name.padStart(5)}$rc" } }
+                .joinToString(separator = "    | ")
+        val rows = Direction.allDirections.flatMap { dir ->
+            (0..6).map { rc ->
+                val header = "  ${dir.name.padStart(5)}$rc  | "
+                val columns = Direction.allDirections.flatMap { enemyDir ->
+                    (0..6).map { enemyRc ->
+                        val pushResult = table[PushAction(dir, rc)]!![PushAction(enemyDir, enemyRc)]!!
+                        val itemsCountDiff = pushResult.itemsCountDiff.toString().padStart(2)
+                        val pushOutItems = pushResult.pushOutItems.toString().padStart(3)
+                        val space = pushResult.space.toString().padStart(3)
+                        "$itemsCountDiff,$pushOutItems,$space"
+                    }
+                }.joinToString(separator = " |")
+                header + columns
+            }
+        }.joinToString(separator = "\n")
+        return header + "\n" + rows
+    }
 }
 
 fun <U : Comparable<U>> caching(funct: (pushesAndMoves: List<PushAndMove>) -> Comparable<U>): Comparator<List<PushAndMove>> {
@@ -354,12 +396,16 @@ fun <U : Comparable<U>> caching(funct: (pushesAndMoves: List<PushAndMove>) -> Co
 }
 
 object PushSelectors {
+    fun itemsCountDiff(push: PushAndMove): Int {
+        val enemyScore = push.enemyPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
+        val ourScore = push.ourPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
+        return ourScore - enemyScore
+    }
+
     private val itemsCountLevelled = { percentLevel: Double, pushesAndMoves: List<PushAndMove> ->
         val firstThatMatch = (3 downTo -3).find { count ->
             val averageForLevel = pushesAndMoves.map {
-                val enemyScore = it.enemyPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
-                val ourScore = it.ourPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
-                if (ourScore - enemyScore >= count) {
+                if (itemsCountDiff(it) >= count) {
                     1
                 } else {
                     0
@@ -375,11 +421,7 @@ object PushSelectors {
     val itemsCountDiff_75p = { pushesAndMoves: List<PushAndMove> -> itemsCountLevelled(0.75, pushesAndMoves) }
 
     private val itemCountDiff = { pushesAndMoves: List<PushAndMove> ->
-        pushesAndMoves.map {
-            val enemyScore = it.enemyPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
-            val ourScore = it.ourPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
-            ourScore - enemyScore
-        }
+        pushesAndMoves.map(this::itemsCountDiff)
     }
 
     val itemsCountDiffMax = { pushesAndMoves: List<PushAndMove> -> itemCountDiff(pushesAndMoves).max()!! }
@@ -396,47 +438,63 @@ object PushSelectors {
     val selfItemsMax = { pushesAndMoves: List<PushAndMove> -> selfItemsCount(pushesAndMoves).max()!! }
     val selfItemsAvg = { pushesAndMoves: List<PushAndMove> -> selfItemsCount(pushesAndMoves).average() }
 
-    private val pushOutItems = { pushesAndMoves: List<PushAndMove> ->
+    fun pushOutItems(push: PushAndMove): Int {
+        val ourScore = pushOutItems(push, push.ourPlayer.playerId, push.ourQuests)
+        val enemyScore = pushOutItems(push, push.enemyPlayer.playerId, push.enemyQuests)
+        return ourScore - enemyScore
+    }
 
+    private fun pushOutItems(push: PushAndMove, playerId: Int, quests: List<String>): Int {
         fun Field.holdOurQuestItem(playerId: Int, quests: List<String>): Boolean {
             return this.item != null && this.item.itemPlayerId == playerId && quests.contains(this.item.itemName)
         }
 
-        pushesAndMoves.map {
-            val ourPlayerId = it.ourPlayer.playerId
-            val ourQuests = it.ourQuests
+        val fieldOnHand = if (playerId == 0) {
+            push.ourFieldOnHand
+        } else {
+            push.enemyFieldOnHand
+        }
+        val onHandScore =
+            if (push.ourFieldOnHand.holdOurQuestItem(playerId, quests)) {
+                16
+            } else {
+                0
+            }
 
-            val onHandScore =
-                if (it.ourFieldOnHand.holdOurQuestItem(ourPlayerId, ourQuests)) {
-                    16
+        val otherItemsScore = push.board.board.mapIndexedNotNull { y, row ->
+            val scores = row.mapIndexedNotNull { x, field ->
+                if (field.holdOurQuestItem(playerId, quests)) {
+                    max(abs(3 - x), abs(3 - y)) * max(abs(3 - x), abs(3 - y))
                 } else {
-                    0
-                }
-
-
-            val otherItemsScore = it.board.board.mapIndexedNotNull { y, row ->
-                val scores = row.mapIndexedNotNull { x, field ->
-                    if (field.holdOurQuestItem(ourPlayerId, ourQuests)) {
-                        max(abs(3 - x), abs(3 - y)) * max(abs(3 - x), abs(3 - y))
-                    } else {
-                        null
-                    }
-                }
-
-                if (scores.isEmpty()) {
                     null
-                } else {
-                    scores.sum()
                 }
-            }.sum()
+            }
 
-            onHandScore + otherItemsScore
+            if (scores.isEmpty()) {
+                null
+            } else {
+                scores.sum()
+            }
+        }.sum()
+
+        return onHandScore + otherItemsScore
+    }
+
+    private val pushOutItems = { pushesAndMoves: List<PushAndMove> ->
+        pushesAndMoves.map {
+            pushOutItems(it)
         }
     }
 
-    val pushOutItemsMax = { pushesAndMoves: List<PushAndMove> -> PushSelectors.pushOutItems(pushesAndMoves).max()!! }
-    val pushOutItemsMin = { pushesAndMoves: List<PushAndMove> -> PushSelectors.pushOutItems(pushesAndMoves).min()!! }
-    val pushOutItemsAvg = { pushesAndMoves: List<PushAndMove> -> PushSelectors.pushOutItems(pushesAndMoves).average() }
+    val pushOutItemsMax = { pushesAndMoves: List<PushAndMove> -> pushOutItems(pushesAndMoves).max()!! }
+    val pushOutItemsMin = { pushesAndMoves: List<PushAndMove> -> pushOutItems(pushesAndMoves).min()!! }
+    val pushOutItemsAvg = { pushesAndMoves: List<PushAndMove> -> pushOutItems(pushesAndMoves).average() }
+
+    fun space(push: PushAndMove): Int {
+        val enemySpace = push.enemyPaths.groupBy { it.point }.size
+        val ourSpace = push.ourPaths.groupBy { it.point }.size
+        return ourSpace - enemySpace
+    }
 
     val space = { pushesAndMoves: List<PushAndMove> ->
         pushesAndMoves.map { push ->
@@ -794,7 +852,7 @@ enum class Direction(val mask: Int, val isVertical: Boolean, val priority: Int) 
             RIGHT -> LEFT
         }
 
-    companion object{
+    companion object {
         val allDirections = Direction.values().toList()
     }
 }
