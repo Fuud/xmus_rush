@@ -7,11 +7,8 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.io.StringReader
 import java.util.*
-import kotlin.collections.average
 import kotlin.collections.component1
 import kotlin.collections.component2
-import kotlin.collections.max
-import kotlin.collections.min
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.system.measureTimeMillis
@@ -254,6 +251,12 @@ data class PushAndMove(
     val ourAction = PushAction(ourDirection, ourRowColumn)
 }
 
+data class Action(
+    val direction: Direction,
+    val rowColumn: Int,
+    val isEnemy: Boolean
+)
+
 private fun findBestPush(
     we: Player,
     enemy: Player,
@@ -288,12 +291,6 @@ private fun findBestPush(
                 for (enemyDirection in enemyDirections) {
                     val draw =
                         enemyRowColumn == rowColumn && (direction == enemyDirection || direction == enemyDirection.opposite)
-
-                    data class Action(
-                        val direction: Direction,
-                        val rowColumn: Int,
-                        val isEnemy: Boolean
-                    )
 
                     val sortedActions = if (draw) {
                         emptyList<Action>()
@@ -561,6 +558,8 @@ data class Field(
 
 }
 
+data class DomainInfo(val size: Int, val ourQuests: Int, val enemyQuests: Int, val ourItems: Int, val enemyItems: Int)
+
 data class PathElem(val point: Point, val itemsTaken: Set<String>, var prev: PathElem?, var direction: Direction?)
 
 data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enemyField: Field) {
@@ -570,6 +569,53 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
     companion object {
         val pooledList1 = arrayListOf<PathElem>()
         val pooledList2 = arrayListOf<PathElem>()
+        val pooledDomains: Array<IntArray> = Array(7) { IntArray(7) }
+        val pooledPoints = mutableSetOf<Point>()
+    }
+
+    fun findDomains(ourQuests: List<String>, enemyQuests: List<String>): List<List<DomainInfo>> {
+        (0..6).forEach { y ->
+            (0..6).forEach { x ->
+                pooledDomains[y][x] = -1
+                pooledPoints.add(Point.point(x, y))
+            }
+        }
+        var size = 0
+        var ourQuest = 0
+        var enemyQuest = 0
+        var ourItem = 0
+        var enemyItem = 0
+        var domainId = 0
+        val domains = mutableMapOf<Int, DomainInfo>()
+        while (pooledPoints.isNotEmpty()) {
+            val seed = pooledPoints.first()
+            pooledPoints.remove(seed)
+            val front = mutableListOf(seed)
+            while (front.isNotEmpty()) {
+                val point = front.removeAt(front.size - 1)
+                size++
+                val item = board[point].item
+                pooledDomains[point] = domainId
+                ourQuest += if (item != null && item.itemPlayerId == 0 && ourQuests.contains(item.itemName)) 1 else 0
+                enemyQuest += if (item != null && item.itemPlayerId == 1 && enemyQuests.contains(item.itemName)) 1 else 0
+                ourItem += if (item != null && item.itemPlayerId == 0) 1 else 0
+                enemyItem += if (item != null && item.itemPlayerId == 1) 1 else 0
+                Direction.allDirections.forEach { direction ->
+                    if (point.can(direction)) {
+                        val newPoint = point.move(direction)
+                        if (pooledPoints.contains(newPoint)) {
+                            pooledPoints.remove(newPoint)
+                            front.add(newPoint)
+                        }
+                    }
+                }
+            }
+            domains[domainId] = DomainInfo(size, ourQuest, enemyQuest, ourItem, enemyItem)
+            domainId++
+        }
+        return pooledDomains.map{row ->
+            row.map{domain -> domains[domain]!!}
+        }
     }
 
     fun findPaths(player: Player, quests: List<String>): List<PathElem> {
@@ -711,6 +757,9 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
     fun canLeft(x: Int, y: Int) = (x > 0) && board[y][x].connect(board[y][x - 1], LEFT)
 }
 
+private operator fun Array<IntArray>.set(point: Point, value: Int) {
+    this[point.y][point.x] = value
+}
 
 private operator fun List<List<Field>>.get(point: Point): Field {
     return this[point.y][point.x]
