@@ -98,6 +98,8 @@ fun main(args: Array<String>) {
         var lastPush: PushAction? = null
         var turn = 0
 
+
+
         repeat(150) { step ->
             val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input, turn)
             turn++
@@ -226,7 +228,10 @@ data class PushAndMove(
     val enemyPlayer: Player,
     val ourQuests: List<String>,
     val enemyQuests: List<String>
-)
+){
+    val enemyAction = PushAction(enemyDirection, enemyRowColumn)
+    val ourAction = PushAction(ourDirection, ourRowColumn)
+}
 
 private fun findBestPush(
     we: Player,
@@ -334,8 +339,21 @@ private fun findBestPush(
             .thenComparing(caching(PushSelectors.pushOutItemsAvg))
             .thenComparing(caching(PushSelectors.spaceAvg))
 
+    val enemyBestMoves = pushes
+        .groupBy { it.enemyAction }
+        .toList()
+        .sortedWith(Comparator { left, right ->
+            comparator.compare(
+                left.second,
+                right.second
+            )
+        })
+        .take(5)
+        .map { it.first }
+
     val (bestMove, bestScore) = pushes
-        .groupBy { PushAction(it.ourDirection, it.ourRowColumn) }
+        .filter { enemyBestMoves.contains(it.enemyAction) }
+        .groupBy { it.ourAction }
         .maxWith(Comparator { left, right ->
             comparator.compare(
                 left.value,
@@ -343,7 +361,7 @@ private fun findBestPush(
             )
         })!!
 
-   // println(PushResultTable(pushes))
+//    println(PushResultTable(pushes))
 
     return bestMove
 }
