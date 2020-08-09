@@ -237,25 +237,29 @@ data class PushAndMove(
     val ourDirection: Direction,
     val enemyRowColumn: Int,
     val enemyDirection: Direction,
-    val ourPaths: List<PathElem>,
-    val enemyPaths: List<PathElem>,
-    val ourFieldOnHand: Field,
-    val enemyFieldOnHand: Field,
     val board: GameBoard,
     val ourPlayer: Player,
     val enemyPlayer: Player,
     val ourQuests: List<String>,
     val enemyQuests: List<String>
 ) {
+    val ourFieldOnHand = board.ourField
+    val enemyFieldOnHand = board.enemyField
+    val ourPaths: List<PathElem> = board.findPaths(ourPlayer, ourQuests)
+    val enemyPaths: List<PathElem> = board.findPaths(enemyPlayer, enemyQuests)
     val enemyAction = PushAction(enemyDirection, enemyRowColumn)
     val ourAction = PushAction(ourDirection, ourRowColumn)
+    val enemySpace = enemyPaths.groupBy { it.point }.size
+    val ourSpace = ourPaths.groupBy { it.point }.size
+    val enemyQuestCompleted = enemyPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
+    val ourQuestCompleted = ourPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
+
+    val estimate: Int = (ourQuestCompleted - enemyQuestCompleted + 3).shl(1)
+        .or(if (ourFieldOnHand.item?.itemPlayerId ?: -1 == 0) 1 else 0).shl(7)
+        .or(ourSpace - enemySpace + 47)
 }
 
-data class Action(
-    val direction: Direction,
-    val rowColumn: Int,
-    val isEnemy: Boolean
-)
+data class Action(val push: PushAction, val isEnemy: Boolean)
 
 private fun findBestPush(
     we: Player,
@@ -296,29 +300,27 @@ private fun findBestPush(
                         emptyList<Action>()
                     } else {
                         listOf(
-                            Action(direction, rowColumn, isEnemy = false),
-                            Action(enemyDirection, enemyRowColumn, isEnemy = true)
-                        ).sortedByDescending { it.direction.priority }
+                            Action(PushAction(direction, rowColumn), isEnemy = false),
+                            Action(PushAction(enemyDirection, enemyRowColumn), isEnemy = true)
+                        ).sortedByDescending { it.push.direction.priority }
                     }
 
                     var newBoard = gameBoard
                     var ourPlayer = we
                     var enemyPlayer = enemy
-                    sortedActions.forEach { (direction, rowColumn, isEnemy) ->
+                    sortedActions.forEach { (push, isEnemy) ->
                         val pushPlayer = if (isEnemy) enemyPlayer else ourPlayer
-                        val board = newBoard.push(pushPlayer, direction, rowColumn)
+                        val board = newBoard.push(pushPlayer, push.direction, push.rowColumn)
                         newBoard = board
                         ourPlayer = ourPlayer.push(
-                            direction,
-                            rowColumn
+                            push.direction,
+                            push.rowColumn
                         )
                         enemyPlayer = enemyPlayer.push(
-                            direction,
-                            rowColumn
+                            push.direction,
+                            push.rowColumn
                         )
                     }
-                    val ourPaths = newBoard.findPaths(ourPlayer, ourQuests)
-                    val enemyPaths = newBoard.findPaths(enemyPlayer, enemyQuests)
 
                     pushes.add(
                         PushAndMove(
@@ -326,10 +328,6 @@ private fun findBestPush(
                             ourDirection = direction,
                             enemyRowColumn = enemyRowColumn,
                             enemyDirection = enemyDirection,
-                            ourPaths = ourPaths,
-                            enemyPaths = enemyPaths,
-                            ourFieldOnHand = newBoard.ourField,
-                            enemyFieldOnHand = newBoard.enemyField,
                             board = newBoard,
                             ourPlayer = ourPlayer,
                             enemyPlayer = enemyPlayer,
@@ -337,7 +335,6 @@ private fun findBestPush(
                             enemyQuests = enemyQuests
                         )
                     )
-
                 }
             }
         }
@@ -425,9 +422,7 @@ fun <U : Comparable<U>> caching(funct: (pushesAndMoves: List<PushAndMove>) -> Co
 
 object PushSelectors {
     fun itemsCountDiff(push: PushAndMove): Int {
-        val enemyScore = push.enemyPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
-        val ourScore = push.ourPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
-        return ourScore - enemyScore
+        return push.ourQuestCompleted - push.enemyQuestCompleted
     }
 
     private val itemsCountLevelled = { percentLevel: Double, pushesAndMoves: List<PushAndMove> ->
@@ -519,16 +514,12 @@ object PushSelectors {
     val pushOutItemsAvg = { pushesAndMoves: List<PushAndMove> -> pushOutItems(pushesAndMoves).average() }
 
     fun space(push: PushAndMove): Int {
-        val enemySpace = push.enemyPaths.groupBy { it.point }.size
-        val ourSpace = push.ourPaths.groupBy { it.point }.size
-        return ourSpace - enemySpace
+        return push.ourSpace - push.enemySpace
     }
 
     val space = { pushesAndMoves: List<PushAndMove> ->
         pushesAndMoves.map { push ->
-            val enemySpace = push.enemyPaths.groupBy { it.point }.size
-            val ourSpace = push.ourPaths.groupBy { it.point }.size
-            ourSpace - enemySpace
+            push.ourSpace - push.enemySpace
         }
     }
 
@@ -565,6 +556,7 @@ data class PathElem(val point: Point, val itemsTaken: Set<String>, var prev: Pat
 data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enemyField: Field) {
     val fields = arrayOf(ourField, enemyField)
     var step: Int = 0
+    val paths = arrayOfNulls<MutableList<PathElem>>(2)
 
     companion object {
         val pooledList1 = arrayListOf<PathElem>()
@@ -619,77 +611,80 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
     }
 
     fun findPaths(player: Player, quests: List<String>): List<PathElem> {
-        fun coordInVisited(newPoint: Point, newItems: Collection<String>): Int {
-            val x = newPoint.x
-            val y = newPoint.y
-            val firstItem = if (quests.size > 0 && newItems.contains(quests[0])) 1 else 0
-            val secondItem = if (quests.size > 1 && newItems.contains(quests[1])) 1 else 0
-            val thirdItem = if (quests.size > 2 && newItems.contains(quests[2])) 1 else 0
+        if (paths[player.playerId] == null) {
+            fun coordInVisited(newPoint: Point, newItems: Collection<String>): Int {
+                val x = newPoint.x
+                val y = newPoint.y
+                val firstItem = if (quests.size > 0 && newItems.contains(quests[0])) 1 else 0
+                val secondItem = if (quests.size > 1 && newItems.contains(quests[1])) 1 else 0
+                val thirdItem = if (quests.size > 2 && newItems.contains(quests[2])) 1 else 0
 
-            return (((x * 7 + y) * 2 + firstItem) * 2 + secondItem) * 2 + thirdItem
-        }
-
-        val initialItem = board[player.point].item
-        val initial =
-            if (initialItem != null && initialItem.itemPlayerId == player.playerId && quests.contains(
-                    initialItem.itemName
-                )
-            ) {
-                PathElem(player.point, setOf(initialItem.itemName), null, null)
-            } else {
-                PathElem(player.point, emptySet(), null, null)
+                return (((x * 7 + y) * 2 + firstItem) * 2 + secondItem) * 2 + thirdItem
             }
 
+            val initialItem = board[player.point].item
+            val initial =
+                if (initialItem != null && initialItem.itemPlayerId == player.playerId && quests.contains(
+                        initialItem.itemName
+                    )
+                ) {
+                    PathElem(player.point, setOf(initialItem.itemName), null, null)
+                } else {
+                    PathElem(player.point, emptySet(), null, null)
+                }
 
-        pooledList1.clear()
-        pooledList2.clear()
-        var front = pooledList1
-        front.add(initial)
 
-        val result = mutableListOf<PathElem>()
+            pooledList1.clear()
+            pooledList2.clear()
+            var front = pooledList1
+            front.add(initial)
 
-        val visited = BitSet(7 * 7 * 8)
-        visited.set(coordInVisited(initial.point, initial.itemsTaken))
-        result.add(initial)
+            val result = mutableListOf<PathElem>()
 
-        repeat(20) {
-            if (front.isEmpty()) {
-                return@repeat
-            }
+            val visited = BitSet(7 * 7 * 8)
+            visited.set(coordInVisited(initial.point, initial.itemsTaken))
+            result.add(initial)
 
-            val newFront = if (front === pooledList1) pooledList2 else pooledList1
-            newFront.clear()
+            repeat(20) {
+                if (front.isEmpty()) {
+                    return@repeat
+                }
 
-            for (pathElem in front) {
-                for (direction in Direction.allDirections) {
-                    if (!pathElem.point.can(direction)) {
-                        continue
-                    }
-                    val newPoint = pathElem.point.move(direction)
-                    val item = board[newPoint].item
-                    val newItems =
-                        if (item != null && item.itemPlayerId == player.playerId && quests.contains(item.itemName)) {
-                            pathElem.itemsTaken + item.itemName
-                        } else {
-                            pathElem.itemsTaken
+                val newFront = if (front === pooledList1) pooledList2 else pooledList1
+                newFront.clear()
+
+                for (pathElem in front) {
+                    for (direction in Direction.allDirections) {
+                        if (!pathElem.point.can(direction)) {
+                            continue
+                        }
+                        val newPoint = pathElem.point.move(direction)
+                        val item = board[newPoint].item
+                        val newItems =
+                            if (item != null && item.itemPlayerId == player.playerId && quests.contains(item.itemName)) {
+                                pathElem.itemsTaken + item.itemName
+                            } else {
+                                pathElem.itemsTaken
+                            }
+
+                        val coordInVisisted = coordInVisited(newPoint, newItems)
+
+                        if (visited.get(coordInVisisted)) {
+                            continue
                         }
 
-                    val coordInVisisted = coordInVisited(newPoint, newItems)
-
-                    if (visited.get(coordInVisisted)) {
-                        continue
+                        val newPathElem = PathElem(newPoint, newItems, pathElem, direction)
+                        visited.set(coordInVisisted)
+                        result.add(newPathElem)
+                        newFront.add(newPathElem)
                     }
-
-                    val newPathElem = PathElem(newPoint, newItems, pathElem, direction)
-                    visited.set(coordInVisisted)
-                    result.add(newPathElem)
-                    newFront.add(newPathElem)
                 }
+                front = newFront
             }
-            front = newFront
-        }
 
-        return result
+            paths[player.playerId] = result
+        }
+        return paths[player.playerId]!!
     }
 
     fun push(player: Player, direction: Direction, rowColumn: Int): GameBoard {
