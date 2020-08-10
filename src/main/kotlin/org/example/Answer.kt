@@ -402,16 +402,22 @@ private fun findBestPush(
             .thenComparing(caching(PushSelectors.pushOutItemsAvg))
             .thenComparing(caching(PushSelectors.spaceAvg))
 
+    val enemyComparator =
+        caching(PushSelectors.itemsCountDiffMax)
+            .thenComparing(caching(PushSelectors.itemsCountDiffAvg))
+            .thenComparing(caching(PushSelectors.pushOutItemsAvg))
+            .thenComparing(caching(PushSelectors.spaceAvg))
+
     val enemyBestMoves = pushes
         .groupBy { it.enemyAction }
         .toList()
         .sortedWith(Comparator { left, right ->
-            comparator.compare(
+            enemyComparator.compare(
                 left.second,
                 right.second
             )
         })
-        .take(5)
+        .take(7)
         .map { it.first }
 
     val (bestMove, bestScore) = pushes
