@@ -1,6 +1,8 @@
 package org.example
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.apache.Apache
 import io.ktor.client.features.cookies.HttpCookies
@@ -21,9 +23,9 @@ object Replay {
 
         val replayFile = File("replays/$replayId.txt")
 
-        val input = if (replayFile.exists()){
+        val input = if (replayFile.exists()) {
             replayFile.readText()
-        }else {
+        } else {
             val replayText = downloadReplay(replayId)
             replayFile.parentFile.mkdirs()
             replayFile.writeText(replayText)
@@ -60,29 +62,48 @@ object Replay {
                 contentType(ContentType.Application.Json)
             }
 
-            return@runBlocking gameInfo.frames
-                .mapNotNull { it.stderr }
-                .joinToString("\n")
-                .lines()
-                .filterNot { it.contains("Duration:") || it.startsWith("#") || it.contains("[") }
-                .joinToString("\n")
+            return@runBlocking gameInfoToInput(gameInfo)
         }
         return input
     }
 }
 
+private fun gameInfoToInput(gameInfo: Game): String {
+    return gameInfo.frames
+        .mapNotNull { it.stderr }
+        .joinToString("\n")
+        .lines()
+        .filterNot { it.contains("Duration:") || it.startsWith("#") || it.contains("[") }
+        .joinToString("\n")
+}
+
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class Frame(
-   val  gameInformation: String? = null,
-   val  stdout: String? = null,
-   val  stderr: String? = null,
-   val  summary: String? = null,
-   val  view: String? = null,
-   val  keyframe: String? = null,
-   val  agentId: String? = null
+    val gameInformation: String? = null,
+    val stdout: String? = null,
+    val stderr: String? = null,
+    val summary: String? = null,
+    val view: String? = null,
+    val keyframe: String? = null,
+    val agentId: String? = null
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class Game(
     val frames: List<Frame>
 )
+
+object Transformer {
+    @JvmStatic
+    fun main(args: Array<String>) {
+        val name = "1"
+        val from = File("replays/$name.json")
+        val to = File("replays/$name.txt")
+
+        to.writeText(
+            gameInfoToInput(
+                jacksonObjectMapper().readValue<Game>(from)
+            )
+        )
+    }
+}
