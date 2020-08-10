@@ -1,4 +1,5 @@
 import Direction.*
+import Item.Companion.isBelongToQuest
 import PushSelectors.itemsCountDiff
 import PushSelectors.pushOutItems
 import PushSelectors.space
@@ -67,6 +68,7 @@ fun performGame() {
 
 
         repeat(150) { step ->
+            log("step $step")
             val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input, step)
 
             // Write an action using println()
@@ -140,6 +142,18 @@ fun performGame() {
                     pathElem.itemsTaken.size
                 }.thenComparing { pathElem ->
                     max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
+                }.thenComparing { pathElem ->
+                    val ourField = gameBoard.ourField
+                    if (ourField.containsQuestItem(we.playerId, ourQuests)) {
+                        val (x, y) = pathElem.point
+                        if ((x == 0 || x == 6) && (y == 0 || y == 6)) {
+                            1
+                        } else {
+                            0
+                        }
+                    } else {
+                        0
+                    }
                 }.thenComparing { pathElem ->
                     gameBoard.board[pathElem.point].tile.roads
                 }
@@ -262,8 +276,8 @@ data class PushAndMove(
 ) {
     val ourFieldOnHand = board.ourField
     val enemyFieldOnHand = board.enemyField
-    val ourDomain = board.findDomain(ourPlayer.point, ourQuests,  enemyQuests)
-    val enemyDomain = board.findDomain(enemyPlayer.point, ourQuests,  enemyQuests)
+    val ourDomain = board.findDomain(ourPlayer.point, ourQuests, enemyQuests)
+    val enemyDomain = board.findDomain(enemyPlayer.point, ourQuests, enemyQuests)
     val ourAction = PushAction(ourDirection, ourRowColumn)
     val enemyAction = PushAction(enemyDirection, enemyRowColumn)
 
@@ -435,12 +449,12 @@ class PushResultTable(pushes: List<PushAndMove>) {
     override fun toString(): String {
         val header =
             "our\\enemy |  " + Direction.allDirections.flatMap { dir ->
-                (0..6).map { rc ->
-                    "${dir.name.padStart(
-                        5
-                    )}$rc"
+                    (0..6).map { rc ->
+                        "${dir.name.padStart(
+                            5
+                        )}$rc"
+                    }
                 }
-            }
                 .joinToString(separator = "    | ")
         val rows = Direction.allDirections.flatMap { dir ->
             (0..6).map { rc ->
@@ -597,6 +611,9 @@ data class Field(
         return this.tile.connect(field.tile, direction)
     }
 
+    fun containsQuestItem(playerId: Int, quests: List<String>): Boolean {
+        return this.item.isBelongToQuest(playerId, quests)
+    }
 }
 
 data class DomainInfo(
@@ -663,8 +680,8 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
             size++
             val item = board[nextPoint].item
             pooledDomains[nextPoint] = domainId
-            ourQuest += if (item != null && item.itemPlayerId == 0 && ourQuests.contains(item.itemName)) 1 else 0
-            enemyQuest += if (item != null && item.itemPlayerId == 1 && enemyQuests.contains(item.itemName)) 1 else 0
+            ourQuest += if (item.isBelongToQuest(0, ourQuests)) 1 else 0
+            enemyQuest += if (item.isBelongToQuest(1, enemyQuests)) 1 else 0
             ourItem += if (item != null && item.itemPlayerId == 0) 1 else 0
             enemyItem += if (item != null && item.itemPlayerId == 1) 1 else 0
             Direction.allDirections.forEach { direction ->
@@ -705,11 +722,8 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
 
             val initialItem = board[player.point].item
             val initial =
-                if (initialItem != null && initialItem.itemPlayerId == player.playerId && quests.contains(
-                        initialItem.itemName
-                    )
-                ) {
-                    PathElem(player.point, setOf(initialItem.itemName), null, null)
+                if (initialItem.isBelongToQuest(player.playerId, quests)) {
+                    PathElem(player.point, setOf(initialItem!!.itemName), null, null)
                 } else {
                     PathElem(player.point, emptySet(), null, null)
                 }
@@ -741,12 +755,11 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
                         }
                         val newPoint = pathElem.point.move(direction)
                         val item = board[newPoint].item
-                        val newItems =
-                            if (item != null && item.itemPlayerId == player.playerId && quests.contains(item.itemName)) {
-                                pathElem.itemsTaken + item.itemName
-                            } else {
-                                pathElem.itemsTaken
-                            }
+                        val newItems = if (item.isBelongToQuest(player.playerId, quests)) {
+                            pathElem.itemsTaken + item!!.itemName
+                        } else {
+                            pathElem.itemsTaken
+                        }
 
                         val coordInVisisted = coordInVisited(newPoint, newItems)
 
@@ -842,7 +855,7 @@ private operator fun <T> List<List<T>>.get(point: Point): T {
 }
 
 
-class Point private constructor(val x: Int, val y: Int) {
+data class Point private constructor(val x: Int, val y: Int) {
     var up: Point? = null
     var down: Point? = null
     var left: Point? = null
@@ -974,7 +987,13 @@ data class Player(
     }
 }
 
-data class Item(val itemName: String, val itemPlayerId: Int)
+data class Item(val itemName: String, val itemPlayerId: Int) {
+    companion object {
+        fun Item?.isBelongToQuest(playerId: Int, quests: List<String>): Boolean {
+            return this != null && this.itemPlayerId == playerId && quests.contains(this.itemName)
+        }
+    }
+}
 
 data class ItemDto(val itemName: String, val itemX: Int, val itemY: Int, val itemPlayerId: Int) {
     constructor(input: Scanner) : this(
