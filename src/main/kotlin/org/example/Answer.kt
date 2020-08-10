@@ -173,15 +173,15 @@ fun findEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: PushAction)
 
             var newBoard = fromBoard
             sortedActions.forEach { push ->
-                val pushPlayer = if (push === enemyPush){
+                val pushPlayer = if (push === enemyPush) {
                     1
-                }else {
+                } else {
                     0
                 }
                 val board = newBoard.push(pushPlayer, push.direction, push.rowColumn)
                 newBoard = board
             }
-            if (newBoard == toBoard){
+            if (newBoard.samePositionsAfterPush(toBoard)) {
                 return enemyPush
             }
         }
@@ -596,6 +596,21 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
         val pooledList2 = arrayListOf<PathElem>()
         val pooledDomains: Array<IntArray> = Array(7) { IntArray(7) }
         val pooledPoints = mutableSetOf<Point>()
+    }
+
+    fun samePositionsAfterPush(other: GameBoard): Boolean {
+        if (other.ourField != ourField && other.enemyField!=enemyField){
+            return false
+        }
+
+        for (y in (0..6)){
+            for (x in (0..6)){
+                if (board[y][x].tile != other.board[y][x].tile){
+                    return false
+                }
+            }
+        }
+        return true
     }
 
     fun findDomains(ourQuests: List<String>, enemyQuests: List<String>): List<List<DomainInfo>> {
