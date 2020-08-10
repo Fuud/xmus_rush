@@ -26,7 +26,7 @@ object Test {
         val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input, 0)
         while (true) {
             val duration = measureTimeMillis {
-                val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests, null, null, false)
+                val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests, null, null)
                 println(bestMove)
             }
             println(duration)
@@ -41,8 +41,8 @@ fun main(args: Array<String>) {
     performGame()
 }
 
-fun log(s: Any?){
-    System.err.println("#$s")
+fun log(s: Any?) {
+    System.err.println("\n#$s\n")
 }
 
 fun performGame() {
@@ -75,9 +75,10 @@ fun performGame() {
 
 //                while (true) {
                 val duration = measureTimeMillis {
+                    val prevMovesAtThisPosition = allBoards[gameBoard]
 
-                    val expectedEnemyMoves = if (allBoards.containsKey(gameBoard)) { // we have seen it
-                        listOf(allBoards[gameBoard]!!.enemyAction)
+                    val expectedEnemyMoves = if (prevMovesAtThisPosition != null) { // we have seen it
+                        listOf(prevMovesAtThisPosition.enemyAction)
                     } else {
                         if (wasDrawAtPrevMove) {
                             listOf(lastPush!!, lastPush!!.copy(direction = lastPush!!.direction.opposite))
@@ -86,15 +87,16 @@ fun performGame() {
                         }
                     }
 
+                    log("prevDraw=$wasDrawAtPrevMove duplicate=${prevMovesAtThisPosition != null}")
+
                     val bestMove = findBestPush(
                         we,
                         enemy,
                         gameBoard,
                         ourQuests,
                         enemyQuests,
-                        lastPush,
-                        expectedEnemyMoves,
-                        wasDrawAtPrevMove
+                        if (wasDrawAtPrevMove) lastPush else prevMovesAtThisPosition?.ourAction,
+                        expectedEnemyMoves
                     )
 
                     if (step == 0) {
@@ -106,8 +108,7 @@ fun performGame() {
                                 ourQuests,
                                 enemyQuests,
                                 lastPush,
-                                expectedEnemyMoves,
-                                wasDrawAtPrevMove
+                                expectedEnemyMoves
                             )
                         }
                         log(warmUp)
@@ -124,10 +125,12 @@ fun performGame() {
             } else {
                 val lastPush = lastPush!!
                 val lastBoard = lastBoard!!
-                wasDrawAtPrevMove = lastBoard.samePositionsAfterPush(gameBoard)
+                wasDrawAtPrevMove = lastBoard == gameBoard
                 if (!wasDrawAtPrevMove) {
-                    val enemyLastPush = findEnemyPush(lastBoard, gameBoard, lastPush)
-                    allBoards.put(gameBoard, Actions(lastPush, enemyLastPush))
+                    val enemyLastPush = tryFindEnemyPush(lastBoard, gameBoard, lastPush)
+                    if (enemyLastPush != null) {
+                        allBoards.put(gameBoard, Actions(lastPush, enemyLastPush))
+                    }
                     null // we do not know enemy move
                 }
 
@@ -166,7 +169,7 @@ fun performGame() {
     }
 }
 
-fun findEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: PushAction): PushAction {
+fun tryFindEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: PushAction): PushAction? {
     for (enemyRowColumn in (0..6)) {
         for (enemyDirection in Direction.allDirections) {
             val draw =
@@ -189,12 +192,12 @@ fun findEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: PushAction)
                 val board = newBoard.push(pushPlayer, push.direction, push.rowColumn)
                 newBoard = board
             }
-            if (newBoard.samePositionsAfterPush(toBoard)) {
+            if (newBoard == toBoard) {
                 return enemyPush
             }
         }
     }
-    throw IllegalStateException("Cannot find push")
+    return null // for example if item was taken immediately after push we cannot find enemy move
 }
 
 private fun readInput(input: Scanner, step: Int): InputConditions {
@@ -289,9 +292,8 @@ private fun findBestPush(
     gameBoard: GameBoard,
     ourQuests: List<String>,
     enemyQuests: List<String>,
-    lastPush: PushAction? = null,
-    expectedEnemyMoves: List<PushAction>?,
-    wasDrawAtPrevMove: Boolean
+    ourPushInSamePosition: PushAction? = null,
+    expectedEnemyMoves: List<PushAction>?
 ): PushAction {
 
     val pushes = mutableListOf<PushAndMove>()
@@ -302,8 +304,12 @@ private fun findBestPush(
     val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
             || (we.numPlayerCards == enemy.numPlayerCards && gameBoard.step < 50))
 
-    val forbiddenPushMoves = if (wasDrawAtPrevMove && weLoseOrDrawAtEarlyGame) {
-        listOf(lastPush!!, lastPush.copy(direction = lastPush.direction.opposite))
+    val weHaveSeenThisPositionBefore = ourPushInSamePosition != null
+    val forbiddenPushMoves = if (weHaveSeenThisPositionBefore && weLoseOrDrawAtEarlyGame) {
+        listOf(
+            ourPushInSamePosition!!,
+            ourPushInSamePosition.copy(direction = ourPushInSamePosition.direction.opposite)
+        )
     } else {
         emptyList()
     }
@@ -429,12 +435,12 @@ class PushResultTable(pushes: List<PushAndMove>) {
     override fun toString(): String {
         val header =
             "our\\enemy |  " + Direction.allDirections.flatMap { dir ->
-                    (0..6).map { rc ->
-                        "${dir.name.padStart(
-                            5
-                        )}$rc"
-                    }
+                (0..6).map { rc ->
+                    "${dir.name.padStart(
+                        5
+                    )}$rc"
                 }
+            }
                 .joinToString(separator = "    | ")
         val rows = Direction.allDirections.flatMap { dir ->
             (0..6).map { rc ->
@@ -625,21 +631,6 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
         val pooledPoints = mutableSetOf<Point>()
     }
 
-    fun samePositionsAfterPush(other: GameBoard): Boolean {
-        if (other.ourField != ourField && other.enemyField != enemyField) {
-            return false
-        }
-
-        for (y in (0..6)) {
-            for (x in (0..6)) {
-                if (board[y][x].tile != other.board[y][x].tile) {
-                    return false
-                }
-            }
-        }
-        return true
-    }
-
     fun findDomain(
         point: Point,
         ourQuests: List<String>,
@@ -651,7 +642,6 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
         if (cachedDomains[point].size > 0) {
             return cachedDomains[point]
         }
-
         (0..6).forEach { y ->
             (0..6).forEach { x ->
                 pooledDomains[y][x] = -1
@@ -1037,7 +1027,7 @@ class TeeInputStream(protected var source: InputStream, protected var copySink: 
     @Throws(IOException::class)
     override fun read(): Int {
         val result = source.read()
-        if (result >= 0){
+        if (result >= 0) {
             copySink.write(result)
         }
         return result
@@ -1065,7 +1055,7 @@ class TeeInputStream(protected var source: InputStream, protected var copySink: 
     @Throws(IOException::class)
     override fun read(b: ByteArray, off: Int, len: Int): Int {
         val result = source.read(b, off, len)
-        if (result >= 0){
+        if (result >= 0) {
             copySink.write(b, off, result)
         }
         return result
@@ -1074,7 +1064,7 @@ class TeeInputStream(protected var source: InputStream, protected var copySink: 
     @Throws(IOException::class)
     override fun read(b: ByteArray): Int {
         val result = source.read(b)
-        if (result >= 0){
+        if (result >= 0) {
             copySink.write(b, 0, result)
         }
         return result
