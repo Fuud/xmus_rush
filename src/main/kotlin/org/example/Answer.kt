@@ -39,9 +39,18 @@ object Test {
  * Help the Christmas elves fetch presents in a magical labyrinth!
  **/
 fun main(args: Array<String>) {
+    performGame()
+}
+
+fun log(s: Any?){
+    System.err.println("#$s")
+}
+
+fun performGame() {
     try {
 //        val input = Scanner(System.`in`)
         val input = Scanner(TeeInputStream(System.`in`, System.err))
+
 //        val input = Scanner(
 //            StringReader(
 //                """""".trimIndent()
@@ -102,7 +111,7 @@ fun main(args: Array<String>) {
                                 wasDrawAtPrevMove
                             )
                         }
-                        System.err.println(warmUp)
+                        log(warmUp)
                     }
 
                     println("PUSH ${bestMove.rowColumn} ${bestMove.direction}")
@@ -111,7 +120,7 @@ fun main(args: Array<String>) {
                     lastPush = bestMove
                 }
 
-                System.err.println("Duration: $duration")
+                log("Duration: $duration")
 //                }
             } else {
                 val lastPush = lastPush!!
@@ -986,7 +995,9 @@ class TeeInputStream(protected var source: InputStream, protected var copySink: 
     @Throws(IOException::class)
     override fun read(): Int {
         val result = source.read()
-        copySink.write(result)
+        if (result >= 0){
+            copySink.write(result)
+        }
         return result
     }
 
@@ -1012,14 +1023,18 @@ class TeeInputStream(protected var source: InputStream, protected var copySink: 
     @Throws(IOException::class)
     override fun read(b: ByteArray, off: Int, len: Int): Int {
         val result = source.read(b, off, len)
-        copySink.write(b, off, result)
+        if (result >= 0){
+            copySink.write(b, off, result)
+        }
         return result
     }
 
     @Throws(IOException::class)
     override fun read(b: ByteArray): Int {
         val result = source.read(b)
-        copySink.write(b, 0, result)
+        if (result >= 0){
+            copySink.write(b, 0, result)
+        }
         return result
     }
 
