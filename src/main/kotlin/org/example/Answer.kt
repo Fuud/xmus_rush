@@ -6,6 +6,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.StringReader
+import java.lang.IllegalStateException
 import java.util.*
 import kotlin.collections.component1
 import kotlin.collections.component2
@@ -50,6 +51,7 @@ fun main(args: Array<String>) {
         // game loop
         var lastBoard: GameBoard? = null
         var lastPush: PushAction? = null
+        var wasDrawAtPrevMove = false
 
         data class Actions(val ourAction: PushAction, val enemyAction: PushAction)
 
@@ -65,24 +67,14 @@ fun main(args: Array<String>) {
 
 //                while (true) {
                 val duration = measureTimeMillis {
-                    val wasDrawAtPrevMove = lastBoard == gameBoard
+
                     val expectedEnemyMoves = if (allBoards.containsKey(gameBoard)) { // we have seen it
                         listOf(allBoards[gameBoard]!!.enemyAction)
                     } else {
-                        if (lastBoard != null) {
-                            val lastPush = lastPush!!
-                            val lastBoard = lastBoard!!
-                            if (wasDrawAtPrevMove) {
-                                listOf(lastPush, lastPush.copy(direction = lastPush.direction.opposite))
-                            } else {
-                                val pushes = findExecutedPushes(lastBoard, gameBoard)
-                                require(pushes.contains(lastPush))
-                                val enemyPush = pushes.single { it != lastPush }
-                                allBoards.put(gameBoard, Actions(lastPush, enemyPush))
-                                null // we do not know enemy move
-                            }
+                        if (wasDrawAtPrevMove) {
+                            listOf(lastPush!!, lastPush!!.copy(direction = lastPush!!.direction.opposite))
                         } else {
-                            null // we do not know enemy move
+                            null
                         }
                     }
 
@@ -122,6 +114,15 @@ fun main(args: Array<String>) {
                 System.err.println("Duration: $duration")
 //                }
             } else {
+                val lastPush = lastPush!!
+                val lastBoard = lastBoard!!
+                wasDrawAtPrevMove = lastBoard == gameBoard
+                if (!wasDrawAtPrevMove) {
+                    val enemyLastPush = findEnemyPush(lastBoard, gameBoard, lastPush)
+                    allBoards.put(gameBoard, Actions(lastPush, enemyLastPush))
+                    null // we do not know enemy move
+                }
+
                 val paths = gameBoard.findPaths(we, ourQuests)
 
                 val pathsComparator = compareBy<PathElem> { pathElem ->
@@ -157,30 +158,35 @@ fun main(args: Array<String>) {
     }
 }
 
-fun findExecutedPushes(fromBoard: GameBoard, toBoard: GameBoard): List<PushAction> {
-    val result = mutableListOf<PushAction>()
-    (0..6).forEach { row ->
-        val isShiftRight =
-            (1..6).count { column -> fromBoard.board[row][column - 1].tile == toBoard.board[row][column].tile } >= 5
-        if (isShiftRight) {
-            result.add(PushAction(RIGHT, row))
-        }
-        val isShiftLeft = (0..5).count { column -> fromBoard.board[row][column + 1].tile == toBoard.board[row][column].tile } >= 5
-        if (isShiftLeft) {
-            result.add(PushAction(LEFT, row))
+fun findEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: PushAction): PushAction {
+    for (enemyRowColumn in (0..6)) {
+        for (enemyDirection in Direction.allDirections) {
+            val draw =
+                enemyRowColumn == ourPush.rowColumn && (ourPush.direction == enemyDirection || ourPush.direction == enemyDirection.opposite)
+
+            if (draw) {
+                continue
+            }
+
+            val enemyPush = PushAction(enemyDirection, enemyRowColumn)
+            val sortedActions = listOf(ourPush, enemyPush).sortedByDescending { it.direction.priority }
+
+            var newBoard = fromBoard
+            sortedActions.forEach { push ->
+                val pushPlayer = if (push === enemyPush){
+                    1
+                }else {
+                    0
+                }
+                val board = newBoard.push(pushPlayer, push.direction, push.rowColumn)
+                newBoard = board
+            }
+            if (newBoard == toBoard){
+                return enemyPush
+            }
         }
     }
-    (0..6).forEach { column ->
-        val isShiftUp = (1..6).count { row -> fromBoard.board[row - 1][column].tile == toBoard.board[row][column].tile } >= 5
-        if (isShiftUp) {
-            result.add(PushAction(DOWN, column))
-        }
-        val isShiftDown = (0..5).count { row -> fromBoard.board[row + 1][column].tile == toBoard.board[row][column].tile } >= 5
-        if (isShiftDown) {
-            result.add(PushAction(UP, column))
-        }
-    }
-    return result
+    throw IllegalStateException("Cannot find push")
 }
 
 private fun readInput(input: Scanner, step: Int): InputConditions {
@@ -306,7 +312,7 @@ private fun findBestPush(
                     var enemyPlayer = enemy
                     sortedActions.forEach { (direction, rowColumn, isEnemy) ->
                         val pushPlayer = if (isEnemy) enemyPlayer else ourPlayer
-                        val board = newBoard.push(pushPlayer, direction, rowColumn)
+                        val board = newBoard.push(pushPlayer.playerId, direction, rowColumn)
                         newBoard = board
                         ourPlayer = ourPlayer.push(
                             direction,
@@ -389,11 +395,19 @@ class PushResultTable(pushes: List<PushAndMove>) {
 
     val table = pushes
         .groupBy { PushAction(it.ourDirection, it.ourRowColumn) }
-        .mapValues { it.value.map { PushAction(it.enemyDirection, it.enemyRowColumn) to calcPushResult(it) }.toMap() }
+        .mapValues {
+            it.value.map { PushAction(it.enemyDirection, it.enemyRowColumn) to calcPushResult(it) }.toMap()
+        }
 
     override fun toString(): String {
         val header =
-            "our\\enemy |  " + Direction.allDirections.flatMap { dir -> (0..6).map { rc -> "${dir.name.padStart(5)}$rc" } }
+            "our\\enemy |  " + Direction.allDirections.flatMap { dir ->
+                    (0..6).map { rc ->
+                        "${dir.name.padStart(
+                            5
+                        )}$rc"
+                    }
+                }
                 .joinToString(separator = "    | ")
         val rows = Direction.allDirections.flatMap { dir ->
             (0..6).map { rc ->
@@ -558,9 +572,20 @@ data class Field(
 
 }
 
-data class DomainInfo(val size: Int, val ourQuests: Int, val enemyQuests: Int, val ourItems: Int, val enemyItems: Int)
+data class DomainInfo(
+    val size: Int,
+    val ourQuests: Int,
+    val enemyQuests: Int,
+    val ourItems: Int,
+    val enemyItems: Int
+)
 
-data class PathElem(val point: Point, val itemsTaken: Set<String>, var prev: PathElem?, var direction: Direction?)
+data class PathElem(
+    val point: Point,
+    val itemsTaken: Set<String>,
+    var prev: PathElem?,
+    var direction: Direction?
+)
 
 data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enemyField: Field) {
     val fields = arrayOf(ourField, enemyField)
@@ -613,8 +638,8 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
             domains[domainId] = DomainInfo(size, ourQuest, enemyQuest, ourItem, enemyItem)
             domainId++
         }
-        return pooledDomains.map{row ->
-            row.map{domain -> domains[domain]!!}
+        return pooledDomains.map { row ->
+            row.map { domain -> domains[domain]!! }
         }
     }
 
@@ -692,8 +717,8 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
         return result
     }
 
-    fun push(player: Player, direction: Direction, rowColumn: Int): GameBoard {
-        val field = fields[player.playerId]
+    fun push(playerId: Int, direction: Direction, rowColumn: Int): GameBoard {
+        val field = fields[playerId]
         val newBoard: List<List<Field>>
         val newField: Field
         if (direction == LEFT || direction == RIGHT) {
@@ -734,8 +759,8 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
             }
         }
         val newFields = fields.copyOf()
-        newFields[player.playerId] = newField
-        return GameBoard(newBoard, newFields[0], newFields[1]).apply { this.step = this@GameBoard.step + 1}
+        newFields[playerId] = newField
+        return GameBoard(newBoard, newFields[0], newFields[1]).apply { this.step = this@GameBoard.step + 1 }
     }
 
 
