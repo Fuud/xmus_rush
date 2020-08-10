@@ -116,7 +116,7 @@ fun main(args: Array<String>) {
             } else {
                 val lastPush = lastPush!!
                 val lastBoard = lastBoard!!
-                wasDrawAtPrevMove = lastBoard == gameBoard
+                wasDrawAtPrevMove = lastBoard.samePositionsAfterPush(gameBoard)
                 if (!wasDrawAtPrevMove) {
                     val enemyLastPush = findEnemyPush(lastBoard, gameBoard, lastPush)
                     allBoards.put(gameBoard, Actions(lastPush, enemyLastPush))
