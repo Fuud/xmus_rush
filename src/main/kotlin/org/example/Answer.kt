@@ -129,7 +129,7 @@ fun performGame() {
                 if (!wasDrawAtPrevMove) {
                     val enemyLastPush = tryFindEnemyPush(lastBoard, gameBoard, lastPush)
                     if (enemyLastPush != null) {
-                        allBoards.put(gameBoard, Actions(lastPush, enemyLastPush))
+                        allBoards.put(lastBoard, Actions(lastPush, enemyLastPush))
                     }
                     null // we do not know enemy move
                 }
