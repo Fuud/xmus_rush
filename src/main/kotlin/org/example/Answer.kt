@@ -46,8 +46,9 @@ fun main(args: Array<String>) {
     performGame()
 }
 
+val startTime = System.currentTimeMillis()
 fun log(s: Any?) {
-    System.err.println("\n#$s\n")
+    System.err.println("\n#[${System.currentTimeMillis() - startTime}] $s\n")
 }
 
 fun setupGcMonitoring() {
@@ -532,18 +533,18 @@ private fun comparePathsWithDomains(
 ) {
 
     val ourPaths: List<PathElem> = newBoard.findPaths(ourPlayer, ourQuests)
-        val enemyPaths: List<PathElem> = newBoard.findPaths(enemyPlayer, enemyQuests)
-        val enemySpace = enemyPaths.groupBy { it.point }.size
-        val ourSpace = ourPaths.groupBy { it.point }.size
-        val enemyQuestCompleted = enemyPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
-        val ourQuestCompleted = ourPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
-        if (pushAndMove.enemySpace != enemySpace
-            || pushAndMove.ourSpace != ourSpace
-            || pushAndMove.enemyQuestCompleted != enemyQuestCompleted
-            || pushAndMove.ourQuestCompleted != ourQuestCompleted
-        ) {
-            System.err.println("!!!!")
-        }
+    val enemyPaths: List<PathElem> = newBoard.findPaths(enemyPlayer, enemyQuests)
+    val enemySpace = enemyPaths.groupBy { it.point }.size
+    val ourSpace = ourPaths.groupBy { it.point }.size
+    val enemyQuestCompleted = enemyPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
+    val ourQuestCompleted = ourPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
+    if (pushAndMove.enemySpace != enemySpace
+        || pushAndMove.ourSpace != ourSpace
+        || pushAndMove.enemyQuestCompleted != enemyQuestCompleted
+        || pushAndMove.ourQuestCompleted != ourQuestCompleted
+    ) {
+        System.err.println("!!!!")
+    }
 
 }
 
@@ -567,12 +568,12 @@ class PushResultTable(pushes: List<PushAndMove>) {
     override fun toString(): String {
         val header =
             "our\\enemy |  " + Direction.allDirections.flatMap { dir ->
-                (0..6).map { rc ->
-                    "${dir.name.padStart(
-                        5
-                    )}$rc"
+                    (0..6).map { rc ->
+                        "${dir.name.padStart(
+                            5
+                        )}$rc"
+                    }
                 }
-            }
                 .joinToString(separator = "    | ")
         val rows = Direction.allDirections.flatMap { dir ->
             (0..6).map { rc ->

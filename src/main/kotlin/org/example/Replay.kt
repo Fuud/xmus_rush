@@ -18,7 +18,7 @@ import java.io.File
 object Replay {
     @JvmStatic
     fun main(args: Array<String>) {
-        val replayId = "481210546"
+        val replayId = "481294220"
 
         val replayFile = File("replays/$replayId.txt")
 
@@ -61,7 +61,12 @@ object Replay {
                 contentType(ContentType.Application.Json)
             }
 
-            return@runBlocking gameInfoToInput(gameInfo)
+            val stdError = gameInfoToInput(gameInfo)
+            File("replays/$replayId.raw.txt").apply {
+                this.parentFile.mkdirs()
+                this.writeText(stdError)
+            }
+            return@runBlocking stdError.lineSequence().filterNot { it.startsWith("#") }.joinToString(separator = "\n")
         }
         return input
     }
@@ -72,7 +77,6 @@ private fun gameInfoToInput(gameInfo: Game): String {
         .mapNotNull { it.stderr }
         .joinToString("\n")
         .lines()
-        .filterNot { it.contains("Duration:") || it.startsWith("#") || it.contains("[") }
         .joinToString("\n")
 }
 
