@@ -871,8 +871,8 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         if (domains.get(point).size > 0) {
             return domains.get(point)
         }
-        (0..6).forEach { y ->
-            (0..6).forEach { x ->
+        for (y in 0..6) {
+            for (x in 0..6) {
                 pooledDomains[y][x] = -1
             }
         }
