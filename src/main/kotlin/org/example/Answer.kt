@@ -13,6 +13,7 @@ import java.util.*
 import java.util.concurrent.TimeUnit
 import javax.management.NotificationEmitter
 import javax.management.NotificationListener
+import kotlin.collections.ArrayList
 import kotlin.collections.component1
 import kotlin.collections.component2
 import kotlin.math.abs
@@ -811,7 +812,8 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         val pooledList1 = arrayListOf<PathElem>()
         val pooledList2 = arrayListOf<PathElem>()
         val pooledDomains: Array<IntArray> = Array(7) { IntArray(7) }
-        val pooledPoints = mutableSetOf<Point>()
+        val visitedPoints = BitSet(50)
+        val pooledFront:MutableList<Point> = ArrayList(50)
     }
 
     fun get(y: Int, x: Int) = board[y * 7 + x]
@@ -831,9 +833,9 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         (0..6).forEach { y ->
             (0..6).forEach { x ->
                 pooledDomains[y][x] = -1
-                pooledPoints.add(Point.point(x, y))
             }
         }
+        visitedPoints.clear()
 
         var size = 0
         var ourQuest = 0
@@ -842,10 +844,11 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         var enemyItem = 0
         val domainId = 0
 
-        pooledPoints.remove(point)
-        val front = mutableListOf(point)
-        while (front.isNotEmpty()) {
-            val nextPoint = front.removeAt(front.size - 1)
+        visitedPoints.set(point.idx)
+        pooledFront.clear()
+        pooledFront.add(point)
+        while (pooledFront.isNotEmpty()) {
+            val nextPoint = pooledFront.removeAt(pooledFront.size - 1)
             size++
             val item = this[nextPoint].item
             pooledDomains[nextPoint] = domainId
@@ -856,9 +859,9 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
             Direction.allDirections.forEach { direction ->
                 if (nextPoint.can(direction)) {
                     val newPoint = nextPoint.move(direction)
-                    if (pooledPoints.contains(newPoint)) {
-                        pooledPoints.remove(newPoint)
-                        front.add(newPoint)
+                    if (!visitedPoints.get(newPoint.idx)) {
+                        visitedPoints.set(newPoint.idx)
+                        pooledFront.add(newPoint)
                     }
                 }
             }
@@ -1039,6 +1042,7 @@ private operator fun <T> List<List<T>>.get(point: Point): T {
 
 
 data class Point private constructor(val x: Int, val y: Int) {
+    val idx = y * 7 + x
     var up: Point? = null
     var down: Point? = null
     var left: Point? = null
