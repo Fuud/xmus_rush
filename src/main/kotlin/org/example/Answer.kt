@@ -209,36 +209,48 @@ fun performGame() {
                         .map { it.point }.toHashSet()
                     ends.forEach { moveScores[it] = 0 }
                     if (true) {
-                        val pushes = computePushes(
-                            gameBoard,
-                            we,
-                            ourQuests,
-                            enemy = enemy,
-                            enemyQuests = enemyQuests,
-                            timeLimitNanos = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
-                        )
+                        val timeLimit = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
+                        val startTime = System.nanoTime()
+
                         val domains = Domains()
-                        pushes.filter { it.board !== gameBoard }
-                            .forEach { push ->
-                                domains.clear()
-                                ends.forEach { point ->
-                                    var fake = Player(-1, -1, point.x, point.y)
-                                    val pushP = if (push.pushes.ourPush.direction.isVertical) {
-                                        fake =
-                                            fake.push(push.pushes.enemyPush.direction, push.pushes.enemyPush.rowColumn)
-                                        fake = fake.push(push.pushes.ourPush.direction, push.pushes.ourPush.rowColumn)
-                                        fake.point
-                                    } else {
-                                        fake = fake.push(push.pushes.ourPush.direction, push.pushes.ourPush.rowColumn)
-                                        fake =
-                                            fake.push(push.pushes.enemyPush.direction, push.pushes.enemyPush.rowColumn)
-                                        fake.point
-                                    }
-                                    val domain = push.board.findDomain(pushP, ourQuests, enemyQuests, domains)
-                                    val score = domain.ourQuests * 12 + domain.size + domain.ourItems
-                                    moveScores[point] = moveScores[point]!! + score
-                                }
+                        var count = 0;
+                        for (pushes in Pushes.allPushes) {
+                            if (System.nanoTime() - startTime > timeLimit) {
+                                log("stop computePushes, computed ${count} pushes")
+                                break
                             }
+                            count++
+
+                            val pushAndMove = pushAndMove(
+                                gameBoard,
+                                pushes,
+                                we,
+                                ourQuests,
+                                enemy,
+                                enemyQuests
+                            )
+                            if (pushAndMove.board === gameBoard) {
+                                continue
+                            }
+                            domains.clear()
+                            ends.forEach { point ->
+                                var fake = Player(-1, -1, point.x, point.y)
+                                val pushP = if (pushes.ourPush.direction.isVertical) {
+                                    fake =
+                                        fake.push(pushes.enemyPush.direction, pushes.enemyPush.rowColumn)
+                                    fake = fake.push(pushes.ourPush.direction, pushes.ourPush.rowColumn)
+                                    fake.point
+                                } else {
+                                    fake = fake.push(pushes.ourPush.direction, pushes.ourPush.rowColumn)
+                                    fake =
+                                        fake.push(pushes.enemyPush.direction, pushes.enemyPush.rowColumn)
+                                    fake.point
+                                }
+                                val domain = pushAndMove.board.findDomain(pushP, ourQuests, enemyQuests, domains)
+                                val score = domain.ourQuests * 12 + domain.size + domain.ourItems
+                                moveScores[point] = moveScores[point]!! + score
+                            }
+                        }
                     }
                     val pathsComparator = compareBy<PathElem> { pathElem ->
                         pathElem.itemsTaken.size
