@@ -196,6 +196,7 @@ fun performGame() {
 //                }
             } else {
                 val duration = measureTimeMillis {
+                    val startTime = System.nanoTime()
                     val lastPush = lastPush!!
                     val lastBoard = lastBoard!!
                     wasDrawAtPrevMove = lastBoard == gameBoard
@@ -215,7 +216,6 @@ fun performGame() {
                     ends.forEach { moveScores[it] = 0 }
                     if (true) {
                         val timeLimit = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
-                        val startTime = System.nanoTime()
 
                         val domains = Domains()
                         var count = 0;
@@ -239,6 +239,11 @@ fun performGame() {
                             }
                             domains.clear()
                             ends.forEach { point ->
+                                val field = gameBoard[point]
+                                val onItem =
+                                    if (field.item?.itemPlayerId ?: -1 == we.playerId
+                                        && !field.containsQuestItem(we.playerId, ourQuests)
+                                    ) 1 else 0
                                 var fake = Player(-1, -1, point.x, point.y)
                                 val pushP = if (pushes.ourPush.direction.isVertical) {
                                     fake =
@@ -252,7 +257,8 @@ fun performGame() {
                                     fake.point
                                 }
                                 val domain = pushAndMove.board.findDomain(pushP, ourQuests, enemyQuests, domains)
-                                val score = domain.ourQuests * 12 + domain.size + domain.ourItems
+                                val score =
+                                    (domain.ourQuests * 4 + itemsTaken * onItem) * 12 + domain.size + domain.ourItems
                                 moveScores[point] = moveScores[point]!! + score
                             }
                         }
