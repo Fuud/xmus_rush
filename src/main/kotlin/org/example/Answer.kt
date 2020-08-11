@@ -10,6 +10,7 @@ import java.io.StringReader
 import java.lang.management.GarbageCollectorMXBean
 import java.lang.management.ManagementFactory
 import java.util.*
+import java.util.concurrent.TimeUnit
 import javax.management.NotificationEmitter
 import javax.management.NotificationListener
 import kotlin.collections.component1
@@ -31,7 +32,7 @@ object Test {
         val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input, 0)
         while (true) {
             val duration = measureTimeMillis {
-                val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests, null, null)
+                val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests, null, null, 0)
                 println(bestMove)
             }
             println(duration)
@@ -131,7 +132,8 @@ fun performGame() {
                         ourQuests,
                         enemyQuests,
                         if (wasDrawAtPrevMove) lastPush else prevMovesAtThisPosition?.ourAction,
-                        expectedEnemyMoves
+                        expectedEnemyMoves,
+                        step
                     )
 
                     if (step == 0) {
@@ -143,7 +145,8 @@ fun performGame() {
                                 ourQuests,
                                 enemyQuests,
                                 lastPush,
-                                expectedEnemyMoves
+                                expectedEnemyMoves,
+                                step = -2 // small limit
                             )
                         }
                         log(warmUp)
@@ -177,7 +180,14 @@ fun performGame() {
                         .map { it.point }.toHashSet()
                     ends.forEach { moveScores[it] = 0 }
                     if (false) {
-                        val pushes = computePushes(gameBoard, we, ourQuests, enemy = enemy, enemyQuests = enemyQuests)
+                        val pushes = computePushes(
+                            gameBoard,
+                            we,
+                            ourQuests,
+                            enemy = enemy,
+                            enemyQuests = enemyQuests,
+                            timeLimitNanos = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
+                        )
                         pushes.filter { it.board !== gameBoard }
                             .forEach { push ->
                                 ends.forEach { point ->
@@ -371,7 +381,8 @@ private fun findBestPush(
     ourQuests: List<String>,
     enemyQuests: List<String>,
     ourPushInSamePosition: PushAction? = null,
-    expectedEnemyMoves: List<PushAction>?
+    expectedEnemyMoves: List<PushAction>?,
+    step: Int
 ): PushAction {
     val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
             || (we.numPlayerCards == enemy.numPlayerCards && gameBoard.step < 50))
@@ -386,7 +397,16 @@ private fun findBestPush(
         emptyList()
     }
 
-    val pushes = computePushes(gameBoard, we, ourQuests, forbiddenPushMoves, enemy, enemyQuests, expectedEnemyMoves)
+    val pushes = computePushes(
+        gameBoard,
+        we,
+        ourQuests,
+        forbiddenPushMoves,
+        enemy,
+        enemyQuests,
+        expectedEnemyMoves,
+        timeLimitNanos = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
+    )
 
     val comparator =
         caching(PushSelectors.itemsCountDiffMin)
@@ -435,8 +455,11 @@ fun computePushes(
     forbiddenPushMoves: List<PushAction> = emptyList(),
     enemy: Player,
     enemyQuests: List<String>,
-    expectedEnemyMoves: List<PushAction>? = null
+    expectedEnemyMoves: List<PushAction>? = null,
+    timeLimitNanos: Long
 ): MutableList<PushAndMove> {
+    val startTime = System.nanoTime()
+
     val enemyDirections = expectedEnemyMoves?.map { it.direction } ?: Direction.allDirections
     val enemyRowColumns = expectedEnemyMoves?.map { it.rowColumn } ?: 0..6
     val pushes = mutableListOf<PushAndMove>()
@@ -447,6 +470,9 @@ fun computePushes(
             }
             for (enemyRowColumn in enemyRowColumns) {
                 for (enemyDirection in enemyDirections) {
+                    if (System.nanoTime() - startTime > timeLimitNanos) {
+                        return pushes
+                    }
                     val pushAndMove = pushAndMove(
                         gameBoard,
                         we,
