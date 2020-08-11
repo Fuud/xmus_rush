@@ -191,6 +191,7 @@ fun performGame() {
 //                }
             } else {
                 val duration = measureTimeMillis {
+                    val startTime = System.nanoTime()
                     val lastPush = lastPush!!
                     val lastBoard = lastBoard!!
                     wasDrawAtPrevMove = lastBoard == gameBoard
@@ -210,7 +211,6 @@ fun performGame() {
                     ends.forEach { moveScores[it] = 0 }
                     if (true) {
                         val timeLimit = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
-                        val startTime = System.nanoTime()
 
                         val domains = Domains()
                         var count = 0;
