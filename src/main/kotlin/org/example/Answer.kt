@@ -830,8 +830,8 @@ class Domains {
         (0..6).map { (0..6).map { DomainInfo.empty }.toMutableList() }.toMutableList()
 
     fun clear() {
-        (0..6).forEach { y ->
-            (0..6).forEach { x ->
+        for (y in 0..6) {
+            for (x in 0..6) {
                 domains[y][x] = DomainInfo.empty
             }
         }
