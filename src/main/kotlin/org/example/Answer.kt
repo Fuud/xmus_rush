@@ -95,10 +95,14 @@ fun performGame() {
         data class Actions(val ourAction: PushAction, val enemyAction: PushAction)
 
         val allBoards = mutableMapOf<GameBoard, Actions>()
-
+        val moveScores = Point.points.flatten()
+            .map { it to 0 }
+            .toMap().toMutableMap()
+        val rand = Random(777)
 
         repeat(150) { step ->
             log("step $step")
+            val start = System.currentTimeMillis()
             val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input, step)
 
             // Write an action using println()
@@ -166,54 +170,53 @@ fun performGame() {
                     }
 
                     val paths = gameBoard.findPaths(we, ourQuests)
-                    val itemsTaken = paths.maxWith(compareBy { it.itemsTaken.size })!!.itemsTaken.size
 
+                    val itemsTaken = paths.maxWith(compareBy { it.itemsTaken.size })!!.itemsTaken.size
                     val ends = paths.filter { it.itemsTaken.size == itemsTaken }
                         .map { it.point }.toHashSet()
-                    val pushes = computePushes(gameBoard, we, ourQuests, enemy = enemy, enemyQuests = enemyQuests)
-
-                    val scores = ends.map { it to 0 }.toMap().toMutableMap()
-                    pushes.filter { it.board !== gameBoard }
-                        .forEach { push ->
-                            ends.forEach { point ->
-                                var fake = Player(-1, -1, point.x, point.y)
-                                val pushP = if (push.ourDirection.isVertical) {
-                                    fake = fake.push(push.enemyDirection, push.enemyRowColumn)
-                                    fake = fake.push(push.ourDirection, push.ourRowColumn)
-                                    fake.point
-                                } else {
-                                    fake = fake.push(push.ourDirection, push.ourRowColumn)
-                                    fake = fake.push(push.enemyDirection, push.enemyRowColumn)
-                                    fake.point
+                    ends.forEach { moveScores[it] = 0 }
+                    if (false) {
+                        val pushes = computePushes(gameBoard, we, ourQuests, enemy = enemy, enemyQuests = enemyQuests)
+                        pushes.filter { it.board !== gameBoard }
+                            .forEach { push ->
+                                ends.forEach { point ->
+                                    var fake = Player(-1, -1, point.x, point.y)
+                                    val pushP = if (push.ourDirection.isVertical) {
+                                        fake = fake.push(push.enemyDirection, push.enemyRowColumn)
+                                        fake = fake.push(push.ourDirection, push.ourRowColumn)
+                                        fake.point
+                                    } else {
+                                        fake = fake.push(push.ourDirection, push.ourRowColumn)
+                                        fake = fake.push(push.enemyDirection, push.enemyRowColumn)
+                                        fake.point
+                                    }
+                                    val domain = push.board.findDomain(pushP, ourQuests, enemyQuests)
+                                    val score = domain.ourQuests * 12 + domain.size + domain.ourItems
+                                    moveScores[point] = moveScores[point]!! + score
                                 }
-                                val domain = push.board.findDomain(pushP, ourQuests, enemyQuests)
-                                val score = domain.ourQuests * 12 + domain.size + domain.ourItems
-                                scores[point] = scores[point]!! + score
                             }
-                        }
-
+                    }
                     val pathsComparator = compareBy<PathElem> { pathElem ->
                         pathElem.itemsTaken.size
+                    }.thenComparing { pathElem ->
+                        moveScores[pathElem.point]!!
+                    }.thenComparing { pathElem ->
+                        max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
+                    }.thenComparing { pathElem ->
+                        val ourField = gameBoard.ourField
+                        if (ourField.containsQuestItem(we.playerId, ourQuests)) {
+                            val (x, y) = pathElem.point
+                            if ((x == 0 || x == 6) && (y == 0 || y == 6)) {
+                                1
+                            } else {
+                                0
+                            }
+                        } else {
+                            0
+                        }
+                    }.thenComparing { pathElem ->
+                        gameBoard.board[pathElem.point].tile.roads
                     }
-                        .thenComparing { pathElem -> scores[pathElem.point]!! }
-//                        .thenComparing { pathElem ->
-//                            max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
-//                        }.thenComparing { pathElem ->
-//                            val ourField = gameBoard.ourField
-//                            if (ourField.containsQuestItem(we.playerId, ourQuests)) {
-//                                val (x, y) = pathElem.point
-//                                if ((x == 0 || x == 6) && (y == 0 || y == 6)) {
-//                                    1
-//                                } else {
-//                                    0
-//                                }
-//                            } else {
-//                                0
-//                            }
-//                        }
-//                        .thenComparing { pathElem ->
-//                            gameBoard.board[pathElem.point].tile.roads
-//                        }
 
                     val bestPath = paths.maxWith(pathsComparator)
 
