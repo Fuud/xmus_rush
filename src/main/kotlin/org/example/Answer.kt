@@ -216,8 +216,10 @@ fun performGame() {
                             enemyQuests = enemyQuests,
                             timeLimitNanos = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
                         )
+                        val domains = Domains()
                         pushes.filter { it.board !== gameBoard }
                             .forEach { push ->
+                                domains.clear()
                                 ends.forEach { point ->
                                     var fake = Player(-1, -1, point.x, point.y)
                                     val pushP = if (push.ourDirection.isVertical) {
@@ -229,7 +231,7 @@ fun performGame() {
                                         fake = fake.push(push.enemyDirection, push.enemyRowColumn)
                                         fake.point
                                     }
-                                    val domain = push.board.findDomain(pushP, ourQuests, enemyQuests)
+                                    val domain = push.board.findDomain(pushP, ourQuests, enemyQuests, domains)
                                     val score = domain.ourQuests * 12 + domain.size + domain.ourItems
                                     moveScores[point] = moveScores[point]!! + score
                                 }
@@ -377,10 +379,19 @@ data class PushAndMove(
     val ourQuests: List<String>,
     val enemyQuests: List<String>
 ) {
+
+    companion object {
+        private val pooledDomains = Domains()
+    }
+
+    init {
+        pooledDomains.clear()
+    }
+
+    val ourDomain = board.findDomain(ourPlayer.point, ourQuests, enemyQuests, pooledDomains)
+    val enemyDomain = board.findDomain(enemyPlayer.point, ourQuests, enemyQuests, pooledDomains)
     val ourFieldOnHand = board.ourField
     val enemyFieldOnHand = board.enemyField
-    val ourDomain = board.findDomain(ourPlayer.point, ourQuests, enemyQuests)
-    val enemyDomain = board.findDomain(enemyPlayer.point, ourQuests, enemyQuests)
     val ourAction = PushAction(ourDirection, ourRowColumn)
     val enemyAction = PushAction(enemyDirection, enemyRowColumn)
 
@@ -803,10 +814,31 @@ data class PathElem(
     var direction: Direction?
 )
 
+class Domains {
+    private val domains: MutableList<MutableList<DomainInfo>> =
+        (0..6).map { (0..6).map { DomainInfo.empty }.toMutableList() }.toMutableList()
+
+    fun clear() {
+        (0..6).forEach { y ->
+            (0..6).forEach { x ->
+                domains[y][x] = DomainInfo.empty
+            }
+        }
+    }
+
+    fun get(point: Point): DomainInfo {
+        return domains[point]
+    }
+
+    fun set(domain: DomainInfo, x: Int, y: Int) {
+        domains[y][x] = domain
+    }
+
+}
+
 data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyField: Field) {
     var step: Int = 0
     val cachedPaths = arrayOfNulls<MutableList<PathElem>>(2)
-    private val cachedDomains: MutableList<MutableList<DomainInfo>> = mutableListOf()
 
     companion object {
         val pooledList1 = arrayListOf<PathElem>()
@@ -822,13 +854,11 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
     fun findDomain(
         point: Point,
         ourQuests: List<String>,
-        enemyQuests: List<String>
+        enemyQuests: List<String>,
+        domains: Domains
     ): DomainInfo {
-        if (cachedDomains.isEmpty()) {
-            cachedDomains.addAll((0..6).map { (0..6).map { DomainInfo.empty }.toMutableList() }.toMutableList())
-        }
-        if (cachedDomains[point].size > 0) {
-            return cachedDomains[point]
+        if (domains.get(point).size > 0) {
+            return domains.get(point)
         }
         (0..6).forEach { y ->
             (0..6).forEach { x ->
@@ -838,8 +868,8 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         visitedPoints.clear()
 
         var size = 0
-        var ourQuest = 0
-        var enemyQuest = 0
+        var ourQuestsCount = 0
+        var enemyQuestsCount = 0
         var ourItem = 0
         var enemyItem = 0
         val domainId = 0
@@ -852,8 +882,8 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
             size++
             val item = this[nextPoint].item
             pooledDomains[nextPoint] = domainId
-            ourQuest += if (item.isBelongToQuest(0, ourQuests)) 1 else 0
-            enemyQuest += if (item.isBelongToQuest(1, enemyQuests)) 1 else 0
+            ourQuestsCount += if (item.isBelongToQuest(0, ourQuests)) 1 else 0
+            enemyQuestsCount += if (item.isBelongToQuest(1, enemyQuests)) 1 else 0
             ourItem += if (item != null && item.itemPlayerId == 0) 1 else 0
             enemyItem += if (item != null && item.itemPlayerId == 1) 1 else 0
             Direction.allDirections.forEach { direction ->
@@ -866,18 +896,18 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
                 }
             }
         }
-        val domain = DomainInfo(size, ourQuest, enemyQuest, ourItem, enemyItem)
+        val domain = DomainInfo(size, ourQuestsCount, enemyQuestsCount, ourItem, enemyItem)
 
 
         pooledDomains.forEachIndexed { y, row ->
             row.forEachIndexed { x, id ->
                 if (id == domainId) {
-                    cachedDomains[y][x] = domain
+                    domains.set(domain, x, y)
                 }
             }
         }
 
-        return cachedDomains[point]
+        return domain
     }
 
     fun findPaths(player: Player, quests: List<String>): List<PathElem> {
