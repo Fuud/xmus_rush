@@ -52,7 +52,9 @@ fun log(s: Any?) {
     System.err.println("\n#[${System.currentTimeMillis() - startTime}] $s\n")
 }
 
-fun setupGcMonitoring() {
+fun setupMonitoring() {
+    log("java started as: ${ManagementFactory.getRuntimeMXBean().inputArguments}")
+
     val garbageCollectorMXBeans: Collection<GarbageCollectorMXBean> =
         ManagementFactory.getGarbageCollectorMXBeans()
 
@@ -77,7 +79,7 @@ fun setupGcMonitoring() {
 }
 
 fun performGame() {
-    setupGcMonitoring()
+    setupMonitoring()
 
     try {
 //        val input = Scanner(System.`in`)
@@ -471,6 +473,7 @@ fun computePushes(
             for (enemyRowColumn in enemyRowColumns) {
                 for (enemyDirection in enemyDirections) {
                     if (System.nanoTime() - startTime > timeLimitNanos) {
+                        log("stop computePushes, computed ${pushes.size} pushes")
                         return pushes
                     }
                     val pushAndMove = pushAndMove(
