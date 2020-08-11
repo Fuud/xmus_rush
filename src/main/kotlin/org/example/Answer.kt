@@ -208,7 +208,7 @@ fun performGame() {
                     val ends = paths.filter { it.itemsTaken.size == itemsTaken }
                         .map { it.point }.toHashSet()
                     ends.forEach { moveScores[it] = 0 }
-                    if (false) {
+                    if (true) {
                         val pushes = computePushes(
                             gameBoard,
                             we,
