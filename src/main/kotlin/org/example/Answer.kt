@@ -162,25 +162,28 @@ fun performGame() {
                             }
                         }
 
-                val pathsComparator = compareBy<PathElem> { pathElem ->
-                    pathElem.itemsTaken.size
-                }.thenComparing { pathElem ->
-                    max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
-                }.thenComparing { pathElem ->
-                    val ourField = gameBoard.ourField
-                    if (ourField.containsQuestItem(we.playerId, ourQuests)) {
-                        val (x, y) = pathElem.point
-                        if ((x == 0 || x == 6) && (y == 0 || y == 6)) {
-                            1
-                        } else {
-                            0
-                        }
-                    } else {
-                        0
+                    val pathsComparator = compareBy<PathElem> { pathElem ->
+                        pathElem.itemsTaken.size
                     }
-                }.thenComparing { pathElem ->
-                    gameBoard.board[pathElem.point].tile.roads
-                }
+                        .thenComparing { pathElem -> scores[pathElem.point]!! }
+//                        .thenComparing { pathElem ->
+//                            max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
+//                        }.thenComparing { pathElem ->
+//                            val ourField = gameBoard.ourField
+//                            if (ourField.containsQuestItem(we.playerId, ourQuests)) {
+//                                val (x, y) = pathElem.point
+//                                if ((x == 0 || x == 6) && (y == 0 || y == 6)) {
+//                                    1
+//                                } else {
+//                                    0
+//                                }
+//                            } else {
+//                                0
+//                            }
+//                        }
+//                        .thenComparing { pathElem ->
+//                            gameBoard.board[pathElem.point].tile.roads
+//                        }
 
                     val bestPath = paths.maxWith(pathsComparator)
 
@@ -410,48 +413,17 @@ fun computePushes(
             }
             for (enemyRowColumn in enemyRowColumns) {
                 for (enemyDirection in enemyDirections) {
-                    val draw =
-                        enemyRowColumn == rowColumn && (direction == enemyDirection || direction == enemyDirection.opposite)
-
-                    val sortedActions = if (draw) {
-                        emptyList<Action>()
-                    } else {
-                        listOf(
-                            Action(PushAction(direction, rowColumn), isEnemy = false),
-                            Action(PushAction(enemyDirection, enemyRowColumn), isEnemy = true)
-                        ).sortedByDescending { it.push.direction.priority }
-                    }
-
-                    var newBoard = gameBoard
-                    var ourPlayer = we
-                    var enemyPlayer = enemy
-                    sortedActions.forEach { (push, isEnemy) ->
-                        val pushPlayer = if (isEnemy) enemyPlayer else ourPlayer
-                        val board = newBoard.push(pushPlayer.playerId, push.direction, push.rowColumn)
-                        newBoard = board
-                        ourPlayer = ourPlayer.push(
-                            push.direction,
-                            push.rowColumn
-                        )
-                        enemyPlayer = enemyPlayer.push(
-                            push.direction,
-                            push.rowColumn
-                        )
-                    }
-
-                    val pushAndMove = PushAndMove(
-                        ourRowColumn = rowColumn,
-                        ourDirection = direction,
-                        enemyRowColumn = enemyRowColumn,
-                        enemyDirection = enemyDirection,
-                        board = newBoard,
-                        ourPlayer = ourPlayer,
-                        enemyPlayer = enemyPlayer,
-                        ourQuests = ourQuests,
-                        enemyQuests = enemyQuests
+                    val pushAndMove = pushAndMove(
+                        gameBoard,
+                        we,
+                        rowColumn,
+                        direction,
+                        ourQuests,
+                        enemy,
+                        enemyRowColumn,
+                        enemyDirection,
+                        enemyQuests
                     )
-
-                    comparePathsWithDomains(newBoard, ourPlayer, ourQuests, enemyPlayer, enemyQuests, pushAndMove)
 
                     pushes.add(pushAndMove)
                 }
@@ -459,6 +431,62 @@ fun computePushes(
         }
     }
     return pushes
+}
+
+private fun pushAndMove(
+    gameBoard: GameBoard,
+    we: Player,
+    rowColumn: Int,
+    direction: Direction,
+    ourQuests: List<String>,
+    enemy: Player,
+    enemyRowColumn: Int,
+    enemyDirection: Direction,
+    enemyQuests: List<String>
+): PushAndMove {
+    val draw =
+        enemyRowColumn == rowColumn && (direction == enemyDirection || direction == enemyDirection.opposite)
+
+    val sortedActions = if (draw) {
+        emptyList<Action>()
+    } else {
+        listOf(
+            Action(PushAction(direction, rowColumn), isEnemy = false),
+            Action(PushAction(enemyDirection, enemyRowColumn), isEnemy = true)
+        ).sortedByDescending { it.push.direction.priority }
+    }
+
+    var newBoard = gameBoard
+    var ourPlayer = we
+    var enemyPlayer = enemy
+    sortedActions.forEach { (push, isEnemy) ->
+        val pushPlayer = if (isEnemy) enemyPlayer else ourPlayer
+        val board = newBoard.push(pushPlayer.playerId, push.direction, push.rowColumn)
+        newBoard = board
+        ourPlayer = ourPlayer.push(
+            push.direction,
+            push.rowColumn
+        )
+        enemyPlayer = enemyPlayer.push(
+            push.direction,
+            push.rowColumn
+        )
+    }
+
+    val pushAndMove = PushAndMove(
+        ourRowColumn = rowColumn,
+        ourDirection = direction,
+        enemyRowColumn = enemyRowColumn,
+        enemyDirection = enemyDirection,
+        board = newBoard,
+        ourPlayer = ourPlayer,
+        enemyPlayer = enemyPlayer,
+        ourQuests = ourQuests,
+        enemyQuests = enemyQuests
+    )
+
+//    comparePathsWithDomains(newBoard, ourPlayer, ourQuests, enemyPlayer, enemyQuests, pushAndMove)
+    return pushAndMove
 }
 
 private fun comparePathsWithDomains(
@@ -469,8 +497,8 @@ private fun comparePathsWithDomains(
     enemyQuests: List<String>,
     pushAndMove: PushAndMove
 ) {
-    if (false) {
-        val ourPaths: List<PathElem> = newBoard.findPaths(ourPlayer, ourQuests)
+
+    val ourPaths: List<PathElem> = newBoard.findPaths(ourPlayer, ourQuests)
         val enemyPaths: List<PathElem> = newBoard.findPaths(enemyPlayer, enemyQuests)
         val enemySpace = enemyPaths.groupBy { it.point }.size
         val ourSpace = ourPaths.groupBy { it.point }.size
@@ -483,7 +511,7 @@ private fun comparePathsWithDomains(
         ) {
             System.err.println("!!!!")
         }
-    }
+
 }
 
 class PushResultTable(pushes: List<PushAndMove>) {
@@ -506,12 +534,12 @@ class PushResultTable(pushes: List<PushAndMove>) {
     override fun toString(): String {
         val header =
             "our\\enemy |  " + Direction.allDirections.flatMap { dir ->
-                    (0..6).map { rc ->
-                        "${dir.name.padStart(
-                            5
-                        )}$rc"
-                    }
+                (0..6).map { rc ->
+                    "${dir.name.padStart(
+                        5
+                    )}$rc"
                 }
+            }
                 .joinToString(separator = "    | ")
         val rows = Direction.allDirections.flatMap { dir ->
             (0..6).map { rc ->

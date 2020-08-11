@@ -13,13 +13,12 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.coroutines.runBlocking
 import performGame
-import java.io.ByteArrayInputStream
 import java.io.File
 
 object Replay {
     @JvmStatic
     fun main(args: Array<String>) {
-        val replayId = "481117552"
+        val replayId = "481210546"
 
         val replayFile = File("replays/$replayId.txt")
 
