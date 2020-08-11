@@ -31,9 +31,13 @@ object Replay {
             replayText
         }
 
-        System.setIn(input.byteInputStream())
+        while (true){
+            try {
+                System.setIn(input.byteInputStream())
+                performGame()
+            }catch (t: Throwable){}
+        }
 
-        performGame()
     }
 
     private fun downloadReplay(replayId: String): String {

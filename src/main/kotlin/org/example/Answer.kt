@@ -369,9 +369,9 @@ data class PushAndMove(
     val enemyQuestCompleted = enemyDomain.enemyQuests
     val ourQuestCompleted = ourDomain.ourQuests
 
-    val estimate: Int = (ourQuestCompleted - enemyQuestCompleted + 3).shl(1)
-        .or(if (ourFieldOnHand.item?.itemPlayerId ?: -1 == 0) 1 else 0).shl(7)
-        .or(ourSpace - enemySpace + 47)
+//    val estimate: Int = (ourQuestCompleted - enemyQuestCompleted + 3).shl(1)
+//        .or(if (ourFieldOnHand.item?.itemPlayerId ?: -1 == 0) 1 else 0).shl(7)
+//        .or(ourSpace - enemySpace + 47)
 }
 
 data class Action(val push: PushAction, val isEnemy: Boolean)
@@ -690,27 +690,20 @@ object PushSelectors {
             push.enemyFieldOnHand
         }
         val onHandScore =
-            if (push.ourFieldOnHand.holdOurQuestItem(playerId, quests)) {
+            if (fieldOnHand.holdOurQuestItem(playerId, quests)) {
                 16
             } else {
                 0
             }
 
-        val otherItemsScore = push.board.board.mapIndexedNotNull { y, row ->
-            val scores = row.mapIndexedNotNull { x, field ->
-                if (field.holdOurQuestItem(playerId, quests)) {
-                    max(abs(3 - x), abs(3 - y)) * max(abs(3 - x), abs(3 - y))
-                } else {
-                    null
+        var otherItemsScore = 0
+        for (y in (0..6)) {
+            for (x in (0..6)) {
+                if (push.board.board[y][x].holdOurQuestItem(playerId, quests)) {
+                    otherItemsScore += max(abs(3 - x), abs(3 - y)) * max(abs(3 - x), abs(3 - y))
                 }
             }
-
-            if (scores.isEmpty()) {
-                null
-            } else {
-                scores.sum()
-            }
-        }.sum()
+        }
 
         return onHandScore + otherItemsScore
     }
