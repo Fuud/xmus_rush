@@ -897,7 +897,7 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
             enemyQuestsCount += if (item.isBelongToQuest(1, enemyQuests)) 1 else 0
             ourItem += if (item != null && item.itemPlayerId == 0) 1 else 0
             enemyItem += if (item != null && item.itemPlayerId == 1) 1 else 0
-            Direction.allDirections.forEach { direction ->
+            for (direction in Direction.allDirections) {
                 if (nextPoint.can(direction)) {
                     val newPoint = nextPoint.move(direction)
                     if (!visitedPoints.get(newPoint.idx)) {
