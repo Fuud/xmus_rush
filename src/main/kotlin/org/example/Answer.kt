@@ -102,6 +102,8 @@ object BoardCache {
     }
 }
 
+val rand = Random(777)
+
 fun performGame() {
     setupMonitoring()
 
@@ -117,16 +119,15 @@ fun performGame() {
 
         // game loop
         var lastBoard: GameBoard? = null
-        var lastPush: PushAction? = null
+        var lastPush: OnePush? = null
         var wasDrawAtPrevMove = false
 
-        data class Actions(val ourAction: PushAction, val enemyAction: PushAction)
+        data class Actions(val ourAction: OnePush, val enemyAction: OnePush)
 
         val allBoards = mutableMapOf<GameBoard, Actions>()
         val moveScores = Point.points.flatten()
             .map { it to 0 }
             .toMap().toMutableMap()
-        val rand = Random(777)
 
         repeat(150) { step ->
             BoardCache.reset()
@@ -222,13 +223,15 @@ fun performGame() {
                                 domains.clear()
                                 ends.forEach { point ->
                                     var fake = Player(-1, -1, point.x, point.y)
-                                    val pushP = if (push.ourDirection.isVertical) {
-                                        fake = fake.push(push.enemyDirection, push.enemyRowColumn)
-                                        fake = fake.push(push.ourDirection, push.ourRowColumn)
+                                    val pushP = if (push.pushes.ourPush.direction.isVertical) {
+                                        fake =
+                                            fake.push(push.pushes.enemyPush.direction, push.pushes.enemyPush.rowColumn)
+                                        fake = fake.push(push.pushes.ourPush.direction, push.pushes.ourPush.rowColumn)
                                         fake.point
                                     } else {
-                                        fake = fake.push(push.ourDirection, push.ourRowColumn)
-                                        fake = fake.push(push.enemyDirection, push.enemyRowColumn)
+                                        fake = fake.push(push.pushes.ourPush.direction, push.pushes.ourPush.rowColumn)
+                                        fake =
+                                            fake.push(push.pushes.enemyPush.direction, push.pushes.enemyPush.rowColumn)
                                         fake.point
                                     }
                                     val domain = push.board.findDomain(pushP, ourQuests, enemyQuests, domains)
@@ -287,7 +290,7 @@ fun performGame() {
     }
 }
 
-fun tryFindEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: PushAction): PushAction? {
+fun tryFindEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: OnePush): OnePush? {
     for (enemyRowColumn in (0..6)) {
         for (enemyDirection in Direction.allDirections) {
             val draw =
@@ -297,7 +300,7 @@ fun tryFindEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: PushActi
                 continue
             }
 
-            val enemyPush = PushAction(enemyDirection, enemyRowColumn)
+            val enemyPush = OnePush(enemyDirection, enemyRowColumn)
             val sortedActions = listOf(ourPush, enemyPush).sortedByDescending { it.direction.priority }
 
             var newBoard = fromBoard
@@ -365,14 +368,29 @@ data class InputConditions(
     var enemy: Player
 )
 
-data class PushAction(val direction: Direction, val rowColumn: Int)
+data class OnePush(val direction: Direction, val rowColumn: Int)
 
+data class Pushes(val ourPush: OnePush, val enemyPush: OnePush) {
+    companion object {
+        val allPushes: List<Pushes> =
+            (0..6).flatMap { ourRowColumn ->
+                Direction.allDirections
+                    .flatMap { ourDirection ->
+                        (0..6).flatMap { enemyRowColumn ->
+                            Direction.allDirections.map { enemyDirection ->
+                                Pushes(
+                                    OnePush(ourDirection, ourRowColumn),
+                                    OnePush(enemyDirection, enemyRowColumn)
+                                )
+                            }
+                        }
+                    }
+            }.shuffled(rand)
+    }
+}
 
 data class PushAndMove(
-    val ourRowColumn: Int,
-    val ourDirection: Direction,
-    val enemyRowColumn: Int,
-    val enemyDirection: Direction,
+    val pushes: Pushes,
     val board: GameBoard,
     val ourPlayer: Player,
     val enemyPlayer: Player,
@@ -392,8 +410,6 @@ data class PushAndMove(
     val enemyDomain = board.findDomain(enemyPlayer.point, ourQuests, enemyQuests, pooledDomains)
     val ourFieldOnHand = board.ourField
     val enemyFieldOnHand = board.enemyField
-    val ourAction = PushAction(ourDirection, ourRowColumn)
-    val enemyAction = PushAction(enemyDirection, enemyRowColumn)
 
 //    val ourPaths: List<PathElem> = board.findPaths(ourPlayer, ourQuests)
 //    val enemyPaths: List<PathElem> = board.findPaths(enemyPlayer, enemyQuests)
@@ -412,7 +428,7 @@ data class PushAndMove(
 //        .or(ourSpace - enemySpace + 47)
 }
 
-data class Action(val push: PushAction, val isEnemy: Boolean)
+data class Action(val push: OnePush, val isEnemy: Boolean)
 
 private fun findBestPush(
     we: Player,
@@ -420,10 +436,10 @@ private fun findBestPush(
     gameBoard: GameBoard,
     ourQuests: List<String>,
     enemyQuests: List<String>,
-    ourPushInSamePosition: PushAction? = null,
-    expectedEnemyMoves: List<PushAction>?,
+    ourPushInSamePosition: OnePush? = null,
+    expectedEnemyMoves: List<OnePush>?,
     step: Int
-): PushAction {
+): OnePush {
     val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
             || (we.numPlayerCards == enemy.numPlayerCards && gameBoard.step < 50))
 
@@ -461,7 +477,7 @@ private fun findBestPush(
             .thenComparing(caching(PushSelectors.spaceAvg))
 
     val enemyBestMoves = pushes
-        .groupBy { it.enemyAction }
+        .groupBy { it.pushes.enemyPush }
         .toList()
         .sortedWith(Comparator { left, right ->
             enemyComparator.compare(
@@ -473,8 +489,8 @@ private fun findBestPush(
         .map { it.first }
 
     val (bestMove, bestScore) = pushes
-        .filter { enemyBestMoves.contains(it.enemyAction) }
-        .groupBy { it.ourAction }
+        .filter { enemyBestMoves.contains(it.pushes.enemyPush) }
+        .groupBy { it.pushes.ourPush }
         .maxWith(Comparator { left, right ->
             comparator.compare(
                 left.value,
@@ -492,10 +508,10 @@ fun computePushes(
     gameBoard: GameBoard,
     we: Player,
     ourQuests: List<String>,
-    forbiddenPushMoves: List<PushAction> = emptyList(),
+    forbiddenPushMoves: List<OnePush> = emptyList(),
     enemy: Player,
     enemyQuests: List<String>,
-    expectedEnemyMoves: List<PushAction>? = null,
+    expectedEnemyMoves: List<OnePush>? = null,
     timeLimitNanos: Long
 ): MutableList<PushAndMove> {
     val startTime = System.nanoTime()
@@ -505,7 +521,7 @@ fun computePushes(
     val pushes = mutableListOf<PushAndMove>()
     for (rowColumn in (0..6)) {
         for (direction in Direction.allDirections) {
-            if (forbiddenPushMoves.contains(PushAction(direction, rowColumn))) {
+            if (forbiddenPushMoves.contains(OnePush(direction, rowColumn))) {
                 continue
             }
             for (enemyRowColumn in enemyRowColumns) {
@@ -516,13 +532,10 @@ fun computePushes(
                     }
                     val pushAndMove = pushAndMove(
                         gameBoard,
+                        Pushes(OnePush(direction, rowColumn), OnePush(enemyDirection, enemyRowColumn)),
                         we,
-                        rowColumn,
-                        direction,
                         ourQuests,
                         enemy,
-                        enemyRowColumn,
-                        enemyDirection,
                         enemyQuests
                     )
 
@@ -536,15 +549,16 @@ fun computePushes(
 
 private fun pushAndMove(
     gameBoard: GameBoard,
+    pushes: Pushes,
     we: Player,
-    rowColumn: Int,
-    direction: Direction,
     ourQuests: List<String>,
     enemy: Player,
-    enemyRowColumn: Int,
-    enemyDirection: Direction,
     enemyQuests: List<String>
 ): PushAndMove {
+    val enemyDirection = pushes.enemyPush.direction
+    val enemyRowColumn = pushes.enemyPush.rowColumn
+    val direction = pushes.ourPush.direction
+    val rowColumn = pushes.ourPush.rowColumn
     val draw =
         enemyRowColumn == rowColumn && (direction == enemyDirection || direction == enemyDirection.opposite)
 
@@ -552,8 +566,8 @@ private fun pushAndMove(
         emptyList<Action>()
     } else {
         listOf(
-            Action(PushAction(direction, rowColumn), isEnemy = false),
-            Action(PushAction(enemyDirection, enemyRowColumn), isEnemy = true)
+            Action(OnePush(direction, rowColumn), isEnemy = false),
+            Action(OnePush(enemyDirection, enemyRowColumn), isEnemy = true)
         ).sortedByDescending { it.push.direction.priority }
     }
 
@@ -575,10 +589,7 @@ private fun pushAndMove(
     }
 
     val pushAndMove = PushAndMove(
-        ourRowColumn = rowColumn,
-        ourDirection = direction,
-        enemyRowColumn = enemyRowColumn,
-        enemyDirection = enemyDirection,
+        pushes = pushes,
         board = newBoard,
         ourPlayer = ourPlayer,
         enemyPlayer = enemyPlayer,
@@ -627,9 +638,9 @@ class PushResultTable(pushes: List<PushAndMove>) {
     }
 
     val table = pushes
-        .groupBy { PushAction(it.ourDirection, it.ourRowColumn) }
+        .groupBy { it.pushes.ourPush }
         .mapValues {
-            it.value.map { PushAction(it.enemyDirection, it.enemyRowColumn) to calcPushResult(it) }.toMap()
+            it.value.map { it.pushes.enemyPush to calcPushResult(it) }.toMap()
         }
 
     override fun toString(): String {
@@ -647,7 +658,7 @@ class PushResultTable(pushes: List<PushAndMove>) {
                 val header = "  ${dir.name.padStart(5)}$rc  | "
                 val columns = Direction.allDirections.flatMap { enemyDir ->
                     (0..6).map { enemyRc ->
-                        val pushResult = table[PushAction(dir, rc)]!![PushAction(enemyDir, enemyRc)]!!
+                        val pushResult = table[OnePush(dir, rc)]!![OnePush(enemyDir, enemyRc)]!!
                         val itemsCountDiff = pushResult.itemsCountDiff.toString().padStart(2)
                         val pushOutItems = pushResult.pushOutItems.toString().padStart(3)
                         val space = pushResult.space.toString().padStart(3)
