@@ -7,7 +7,11 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.StringReader
+import java.lang.management.GarbageCollectorMXBean
+import java.lang.management.ManagementFactory
 import java.util.*
+import javax.management.NotificationEmitter
+import javax.management.NotificationListener
 import kotlin.collections.component1
 import kotlin.collections.component2
 import kotlin.math.abs
@@ -46,7 +50,33 @@ fun log(s: Any?) {
     System.err.println("\n#$s\n")
 }
 
+fun setupGcMonitoring() {
+    val garbageCollectorMXBeans: Collection<GarbageCollectorMXBean> =
+        ManagementFactory.getGarbageCollectorMXBeans()
+
+
+    garbageCollectorMXBeans.forEach { bean ->
+
+        var lastCount = bean.collectionCount
+        var lastTime = bean.collectionTime
+        val listener = NotificationListener { _, _ ->
+            val newCount = bean.collectionCount
+            val newTime = bean.collectionTime
+            log("GC: ${bean.name} collectionsCount=${newCount - lastCount} collectionsTime=${newTime - lastTime}ms")
+            lastCount = newCount
+            lastTime = newTime
+        }
+        (bean as NotificationEmitter).addNotificationListener(
+            listener,
+            null,
+            "haha"
+        )
+    }
+}
+
 fun performGame() {
+    setupGcMonitoring()
+
     try {
 //        val input = Scanner(System.`in`)
         val input = Scanner(TeeInputStream(System.`in`, System.err))
@@ -455,12 +485,12 @@ class PushResultTable(pushes: List<PushAndMove>) {
     override fun toString(): String {
         val header =
             "our\\enemy |  " + Direction.allDirections.flatMap { dir ->
-                    (0..6).map { rc ->
-                        "${dir.name.padStart(
-                            5
-                        )}$rc"
-                    }
+                (0..6).map { rc ->
+                    "${dir.name.padStart(
+                        5
+                    )}$rc"
                 }
+            }
                 .joinToString(separator = "    | ")
         val rows = Direction.allDirections.flatMap { dir ->
             (0..6).map { rc ->
