@@ -518,33 +518,33 @@ fun computePushes(
 
     val enemyDirections = expectedEnemyMoves?.map { it.direction } ?: Direction.allDirections
     val enemyRowColumns = expectedEnemyMoves?.map { it.rowColumn } ?: 0..6
-    val pushes = mutableListOf<PushAndMove>()
-    for (rowColumn in (0..6)) {
-        for (direction in Direction.allDirections) {
-            if (forbiddenPushMoves.contains(OnePush(direction, rowColumn))) {
-                continue
-            }
-            for (enemyRowColumn in enemyRowColumns) {
-                for (enemyDirection in enemyDirections) {
-                    if (System.nanoTime() - startTime > timeLimitNanos) {
-                        log("stop computePushes, computed ${pushes.size} pushes")
-                        return pushes
-                    }
-                    val pushAndMove = pushAndMove(
-                        gameBoard,
-                        Pushes(OnePush(direction, rowColumn), OnePush(enemyDirection, enemyRowColumn)),
-                        we,
-                        ourQuests,
-                        enemy,
-                        enemyQuests
-                    )
-
-                    pushes.add(pushAndMove)
-                }
-            }
+    val result = mutableListOf<PushAndMove>()
+    for (pushes in Pushes.allPushes) {
+        if (System.nanoTime() - startTime > timeLimitNanos) {
+            log("stop computePushes, computed ${result.size} pushes")
+            return result
         }
+        if (!enemyDirections.contains(pushes.enemyPush.direction)) {
+            continue
+        }
+        if (!enemyRowColumns.contains(pushes.enemyPush.rowColumn)) {
+            continue
+        }
+        if (forbiddenPushMoves.contains(pushes.ourPush)) {
+            continue
+        }
+        val pushAndMove = pushAndMove(
+            gameBoard,
+            pushes,
+            we,
+            ourQuests,
+            enemy,
+            enemyQuests
+        )
+        result.add(pushAndMove)
     }
-    return pushes
+
+    return result
 }
 
 private fun pushAndMove(
