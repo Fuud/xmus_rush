@@ -78,6 +78,29 @@ fun setupMonitoring() {
     }
 }
 
+object BoardCache {
+    private val boards = mutableListOf<Array<Field>>()
+    private var index = 0
+
+    fun newBoard(orig: Array<Field>): Array<Field> {
+        return if (index == boards.size) {
+            val result = orig.clone()
+            boards.add(result)
+            index++
+            result
+        } else {
+            val result = boards[index]
+            System.arraycopy(orig, 0, result, 0, orig.size)
+            index++
+            result
+        }
+    }
+
+    fun reset() {
+        index = 0
+    }
+}
+
 fun performGame() {
     setupMonitoring()
 
@@ -105,6 +128,8 @@ fun performGame() {
         val rand = Random(777)
 
         repeat(150) { step ->
+            BoardCache.reset()
+
             log("step $step")
             val start = System.currentTimeMillis()
             val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input, step)
@@ -228,7 +253,7 @@ fun performGame() {
                             0
                         }
                     }.thenComparing { pathElem ->
-                        gameBoard.board[pathElem.point].tile.roads
+                        gameBoard[pathElem.point].tile.roads
                     }
 
                     val bestPath = paths.maxWith(pathsComparator)
@@ -309,15 +334,16 @@ private fun readInput(input: Scanner, step: Int): InputConditions {
     val ourQuests = quests.filter { it.questPlayerId == 0 }.map { it.questItemName }
     val enemyQuests = quests.filter { it.questPlayerId == 1 }.map { it.questItemName }
 
+    val boardArray = Array<Field>(7 * 7) { idx ->
+        val x = idx % 7
+        val y = idx / 7
+        Field(
+            board.board[y][x],
+            items.singleOrNull { it.itemX == x && it.itemY == y }?.toItem()
+        )
+    }
     val gameBoard = GameBoard(
-        board.board.mapIndexed { y, row ->
-            row.mapIndexed { x, cell ->
-                Field(
-                    cell,
-                    items.singleOrNull { it.itemX == x && it.itemY == y }?.toItem()
-                )
-            }
-        },
+        boardArray,
         ourField,
         enemyField
     ).apply {
@@ -699,7 +725,7 @@ object PushSelectors {
         var otherItemsScore = 0
         for (y in (0..6)) {
             for (x in (0..6)) {
-                if (push.board.board[y][x].holdOurQuestItem(playerId, quests)) {
+                if (push.board.get(y, x).holdOurQuestItem(playerId, quests)) {
                     otherItemsScore += max(abs(3 - x), abs(3 - y)) * max(abs(3 - x), abs(3 - y))
                 }
             }
@@ -776,8 +802,7 @@ data class PathElem(
     var direction: Direction?
 )
 
-data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enemyField: Field) {
-    val fields = arrayOf(ourField, enemyField)
+data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyField: Field) {
     var step: Int = 0
     val cachedPaths = arrayOfNulls<MutableList<PathElem>>(2)
     private val cachedDomains: MutableList<MutableList<DomainInfo>> = mutableListOf()
@@ -788,6 +813,9 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
         val pooledDomains: Array<IntArray> = Array(7) { IntArray(7) }
         val pooledPoints = mutableSetOf<Point>()
     }
+
+    fun get(y: Int, x: Int) = board[y * 7 + x]
+    operator fun get(point: Point) = get(point.y, point.x)
 
     fun findDomain(
         point: Point,
@@ -819,7 +847,7 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
         while (front.isNotEmpty()) {
             val nextPoint = front.removeAt(front.size - 1)
             size++
-            val item = board[nextPoint].item
+            val item = this[nextPoint].item
             pooledDomains[nextPoint] = domainId
             ourQuest += if (item.isBelongToQuest(0, ourQuests)) 1 else 0
             enemyQuest += if (item.isBelongToQuest(1, enemyQuests)) 1 else 0
@@ -861,7 +889,7 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
                 return (((x * 7 + y) * 2 + firstItem) * 2 + secondItem) * 2 + thirdItem
             }
 
-            val initialItem = board[player.point].item
+            val initialItem = this[player.point].item
             val initial =
                 if (initialItem.isBelongToQuest(player.playerId, quests)) {
                     PathElem(player.point, setOf(initialItem!!.itemName), null, null)
@@ -895,7 +923,7 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
                             continue
                         }
                         val newPoint = pathElem.point.move(direction)
-                        val item = board[newPoint].item
+                        val item = this[newPoint].item
                         val newItems = if (item.isBelongToQuest(player.playerId, quests)) {
                             pathElem.itemsTaken + item!!.itemName
                         } else {
@@ -923,49 +951,43 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
     }
 
     fun push(playerId: Int, direction: Direction, rowColumn: Int): GameBoard {
-        val field = fields[playerId]
-        val newBoard: List<List<Field>>
+        val field = if (playerId == 0) ourField else enemyField
+        val newBoard = BoardCache.newBoard(board)
         val newField: Field
         if (direction == LEFT || direction == RIGHT) {
-            val mutableBoard = board.toMutableList()
             if (direction == LEFT) {
-                newField = board[rowColumn][0]
-                mutableBoard[rowColumn] = board[rowColumn].toMutableList().apply {
-                    this.removeAt(0)
-                    this.add(6, field)
+                newField = get(rowColumn, 0)
+                newBoard[rowColumn * 7 + 6] = field
+                for (x in (0..5)) {
+                    newBoard[rowColumn * 7 + x] = get(rowColumn, x + 1)
                 }
             } else {
-                newField = board[rowColumn].last()
-                mutableBoard[rowColumn] = board[rowColumn].toMutableList().apply {
-                    this.removeAt(6)
-                    this.add(0, field)
+                newField = get(rowColumn, 6)
+                newBoard[rowColumn * 7 + 0] = field
+                for (x in (1..6)) {
+                    newBoard[rowColumn * 7 + x] = get(rowColumn, x - 1)
                 }
             }
-            newBoard = mutableBoard
         } else {
-            val shift: Int
             if (direction == UP) {
-                shift = 1
-                newField = board[0][rowColumn]
+                newField = get(0, rowColumn)
+                newBoard[6 * 7 + rowColumn] = field
+                for (y in (0..5)) {
+                    newBoard[y * 7 + rowColumn] = get(y + 1, rowColumn)
+                }
             } else {
-                shift = -1
-                newField = board[6][rowColumn]
-            }
-            newBoard = board.mapIndexed { y, row ->
-                row.toMutableList().apply {
-                    this[rowColumn] = if (y == 0 && direction == DOWN) {
-                        field
-                    } else if (y == 6 && direction == UP) {
-                        field
-                    } else {
-                        board[y + shift][rowColumn]
-                    }
+                newField = get(6, rowColumn)
+                newBoard[0 * 7 + rowColumn] = field
+                for (y in (1..6)) {
+                    newBoard[y * 7 + rowColumn] = get(y - 1, rowColumn)
                 }
             }
         }
-        val newFields = fields.copyOf()
-        newFields[playerId] = newField
-        return GameBoard(newBoard, newFields[0], newFields[1]).apply { this.step = this@GameBoard.step + 1 }
+        return GameBoard(
+            board = newBoard,
+            ourField = if (playerId == 0) newField else ourField,
+            enemyField = if (playerId == 1) newField else enemyField
+        ).apply { this.step = this@GameBoard.step + 1 }
     }
 
 
@@ -981,10 +1003,30 @@ data class GameBoard(val board: List<List<Field>>, val ourField: Field, val enem
     fun canDown(point: Point) = canDown(point.x, point.y)
     fun canLeft(point: Point) = canLeft(point.x, point.y)
 
-    fun canUp(x: Int, y: Int) = (y > 0) && board[y][x].connect(board[y - 1][x], UP)
-    fun canRight(x: Int, y: Int) = (x < 6) && board[y][x].connect(board[y][x + 1], RIGHT)
-    fun canDown(x: Int, y: Int) = (y < 6) && board[y][x].connect(board[y + 1][x], DOWN)
-    fun canLeft(x: Int, y: Int) = (x > 0) && board[y][x].connect(board[y][x - 1], LEFT)
+    fun canUp(x: Int, y: Int) = (y > 0) && get(y, x).connect(get(y - 1, x), UP)
+    fun canRight(x: Int, y: Int) = (x < 6) && get(y, x).connect(get(y, x + 1), RIGHT)
+    fun canDown(x: Int, y: Int) = (y < 6) && get(y, x).connect(get(y + 1, x), DOWN)
+    fun canLeft(x: Int, y: Int) = (x > 0) && get(y, x).connect(get(y, x - 1), LEFT)
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as GameBoard
+
+        if (!board.contentEquals(other.board)) return false
+        if (ourField != other.ourField) return false
+        if (enemyField != other.enemyField) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = board.contentHashCode()
+        result = 31 * result + ourField.hashCode()
+        result = 31 * result + enemyField.hashCode()
+        return result
+    }
 }
 
 private operator fun Array<IntArray>.set(point: Point, value: Int) {
