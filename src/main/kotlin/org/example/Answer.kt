@@ -133,7 +133,7 @@ fun performGame() {
             BoardCache.reset()
 
             log("step $step")
-            val start = System.currentTimeMillis()
+            val start = System.nanoTime()
             val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input, step)
 
             // Write an action using println()
@@ -177,8 +177,13 @@ fun performGame() {
                                 expectedEnemyMoves,
                                 step = -2 // small limit
                             )
+                            gameBoard.findPaths(we, ourQuests)
                         }
                         log(warmUp)
+                    }
+
+                    if (System.nanoTime() - start < TimeUnit.MILLISECONDS.toNanos(30)){
+                        Thread.sleep(10)
                     }
 
                     println("PUSH ${bestMove.rowColumn} ${bestMove.direction}")
@@ -275,6 +280,10 @@ fun performGame() {
                     }
 
                     val bestPath = paths.maxWith(pathsComparator)
+
+                    if (System.nanoTime() - start < TimeUnit.MILLISECONDS.toNanos(30)){
+                        Thread.sleep(10)
+                    }
 
                     if (bestPath != null) {
                         val directions = mutableListOf<Direction>()
