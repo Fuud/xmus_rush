@@ -19,6 +19,7 @@ import kotlin.collections.component1
 import kotlin.collections.component2
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.system.measureNanoTime
 import kotlin.system.measureTimeMillis
 
 
@@ -34,7 +35,7 @@ object Test {
         val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input, 0)
         while (true) {
             val duration = measureTimeMillis {
-                val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests, null, null, 0)
+                val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests, 0 )
                 println(bestMove)
             }
             println(duration)
@@ -123,9 +124,7 @@ fun performGame() {
         var lastPush: OnePush? = null
         var wasDrawAtPrevMove = false
 
-        data class Actions(val ourAction: OnePush, val enemyAction: OnePush)
-
-        val allBoards = mutableMapOf<GameBoard, Actions>()
+        val allBoards = mutableMapOf<GameBoard, MutableList<Pushes>>()
         val moveScores = Point.points.flatten()
             .map { it to 0 }
             .toMap().toMutableMap()
@@ -141,18 +140,8 @@ fun performGame() {
             // Write an action using println()
             // To debug: System.err.println("Debug messages...");
             if (turnType == 0) {
-                val duration = measureTimeMillis {
+                val duration = measureNanoTime {
                     val prevMovesAtThisPosition = allBoards[gameBoard]
-
-                    val expectedEnemyMoves = if (prevMovesAtThisPosition != null) { // we have seen it
-                        listOf(prevMovesAtThisPosition.enemyAction)
-                    } else {
-                        if (wasDrawAtPrevMove) {
-                            listOf(lastPush!!, lastPush!!.copy(direction = lastPush!!.direction.opposite))
-                        } else {
-                            null
-                        }
-                    }
 
                     log("prevDraw=$wasDrawAtPrevMove duplicate=${prevMovesAtThisPosition != null}")
 
@@ -162,26 +151,12 @@ fun performGame() {
                         gameBoard,
                         ourQuests,
                         enemyQuests,
-                        if (wasDrawAtPrevMove) lastPush else prevMovesAtThisPosition?.ourAction,
-                        expectedEnemyMoves,
-                        step
+                        step,
+                        prevMovesAtThisPosition
                     )
 
                     if (step == 0) {
-                        val warmUp = (0..6).map {
-                            findBestPush(
-                                we,
-                                enemy,
-                                gameBoard,
-                                ourQuests,
-                                enemyQuests,
-                                lastPush,
-                                expectedEnemyMoves,
-                                step = -2 // small limit
-                            )
-                            gameBoard.findPaths(we, ourQuests)
-                        }
-                        log(warmUp)
+                        Warmup.warmup(start + TimeUnit.MILLISECONDS.toNanos(800) - System.nanoTime())
                     }
 
                     if (System.nanoTime() - start < TimeUnit.MILLISECONDS.toNanos(30)){
@@ -195,20 +170,35 @@ fun performGame() {
                     lastPush = bestMove
                 }
 
-                log("Duration: $duration")
+                log("Duration: ${TimeUnit.NANOSECONDS.toMillis(duration)}")
 //                }
             } else {
                 val startTime = System.nanoTime()
-                val duration = measureTimeMillis {
+                val duration = measureNanoTime {
                     val lastPush = lastPush!!
                     val lastBoard = lastBoard!!
                     wasDrawAtPrevMove = lastBoard == gameBoard
                     if (!wasDrawAtPrevMove) {
                         val enemyLastPush = tryFindEnemyPush(lastBoard, gameBoard, lastPush)
                         if (enemyLastPush != null) {
-                            allBoards.put(lastBoard, Actions(lastPush, enemyLastPush))
+                            //todo we lost possible history of draws
+                            allBoards.put(lastBoard, mutableListOf(Pushes(lastPush, enemyLastPush)))
                         }
-                        null // we do not know enemy move
+                    } else {
+                        val previousPushes = allBoards.get(lastBoard)
+                        if (previousPushes == null) {
+                            allBoards.put(
+                                lastBoard, mutableListOf(
+                                    Pushes(lastPush, lastPush),
+                                    Pushes(lastPush, lastPush.copy(direction = lastPush.direction.opposite))
+                                )
+                            )
+                        } else if (previousPushes.none { it.ourPush == lastPush }) {
+                            previousPushes.add(Pushes(lastPush, lastPush))
+                            previousPushes.add(
+                                Pushes(lastPush, lastPush.copy(direction = lastPush.direction.opposite))
+                            )
+                        }
                     }
 
                     val paths = gameBoard.findPaths(we, ourQuests)
@@ -313,7 +303,7 @@ fun performGame() {
                         println("PASS")
                     }
                 }
-                log("Duration: $duration")
+                log("Duration: ${TimeUnit.NANOSECONDS.toMillis(duration)}")
             }
         }
     } catch (t: Throwable) {
@@ -468,17 +458,19 @@ private fun findBestPush(
     gameBoard: GameBoard,
     ourQuests: List<String>,
     enemyQuests: List<String>,
-    ourPushInSamePosition: OnePush? = null,
-    expectedEnemyMoves: List<OnePush>?,
-    step: Int
+    step: Int,
+    prevPushesAtThisPosition: List<Pushes>? = null
 ): OnePush {
+
     val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
             || (we.numPlayerCards == enemy.numPlayerCards && gameBoard.step < 50))
 
-    val weHaveSeenThisPositionBefore = ourPushInSamePosition != null
+    val weHaveSeenThisPositionBefore = prevPushesAtThisPosition != null
     val forbiddenPushMoves = if (weHaveSeenThisPositionBefore && weLoseOrDrawAtEarlyGame) {
+        //let's forbid random one push
+        val ourPushInSamePosition = prevPushesAtThisPosition!![rand.nextInt(prevPushesAtThisPosition.size)].ourPush
         listOf(
-            ourPushInSamePosition!!,
+            ourPushInSamePosition,
             ourPushInSamePosition.copy(direction = ourPushInSamePosition.direction.opposite)
         )
     } else {
@@ -492,7 +484,7 @@ private fun findBestPush(
         forbiddenPushMoves,
         enemy,
         enemyQuests,
-        expectedEnemyMoves,
+        prevPushesAtThisPosition,
         timeLimitNanos = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
     )
 
@@ -543,24 +535,28 @@ fun computePushes(
     forbiddenPushMoves: List<OnePush> = emptyList(),
     enemy: Player,
     enemyQuests: List<String>,
-    expectedEnemyMoves: List<OnePush>? = null,
+    expectedEnemyMoves: List<Pushes>? = null,
     timeLimitNanos: Long
 ): MutableList<PushAndMove> {
     val startTime = System.nanoTime()
 
-    val enemyDirections = expectedEnemyMoves?.map { it.direction } ?: Direction.allDirections
-    val enemyRowColumns = expectedEnemyMoves?.map { it.rowColumn } ?: 0..6
     val result = mutableListOf<PushAndMove>()
     for (pushes in Pushes.allPushes) {
         if (System.nanoTime() - startTime > timeLimitNanos) {
             log("stop computePushes, computed ${result.size} pushes")
             return result
         }
-        if (!enemyDirections.contains(pushes.enemyPush.direction)) {
-            continue
-        }
-        if (!enemyRowColumns.contains(pushes.enemyPush.rowColumn)) {
-            continue
+        if (expectedEnemyMoves != null) {
+            var shouldProcess = false
+            for (push in expectedEnemyMoves) {
+                if (push.enemyPush == pushes.enemyPush) {
+                    shouldProcess = true;
+                    break
+                }
+            }
+            if (!shouldProcess) {
+                continue
+            }
         }
         if (forbiddenPushMoves.contains(pushes.ourPush)) {
             continue
@@ -1380,4 +1376,115 @@ class TeeInputStream(protected var source: InputStream, protected var copySink: 
         return source.skip(n)
     }
 
+}
+
+class Warmup {
+    companion object {
+
+        fun warmup(limitNanos: Long) {
+            val start = System.nanoTime()
+            val toPush = readInput(Scanner(StringReader(warmupPush)), 0)
+            val toMove = readInput(Scanner(StringReader(warmupMove)), 1)
+
+            while (true) {
+                if (System.nanoTime() > start + limitNanos) {
+                    break
+                }
+                findBestPush(
+                    toPush.we,
+                    toPush.enemy,
+                    toPush.gameBoard,
+                    toPush.ourQuests,
+                    toPush.enemyQuests,
+                    step = -2 // small limit
+                )
+                if (System.nanoTime() > start + limitNanos) {
+                    break
+                }
+                toMove.gameBoard.findPaths(toMove.we, toMove.ourQuests)
+            }
+        }
+
+
+        val warmupMove = """
+1
+0011 1010 0110 0111 0011 1010 1010
+1010 1101 0110 1010 0111 0110 0110
+0101 1101 1001 1001 0101 1010 1110
+1011 1101 1010 1010 0101 0101 1010
+1101 1001 0101 1101 0101 1001 1001
+0111 1100 1001 0111 1001 0111 1100
+0110 1111 0110 0101 1010 1101 0111
+9 5 3 0110
+6 1 5 0101
+15
+SWORD 5 5 0
+MASK 6 2 1
+KEY 2 5 0
+FISH 4 0 1
+SHIELD 4 3 1
+CANDY 2 6 0
+KEY -1 -1 1
+MASK 0 3 0
+SWORD 1 3 1
+SCROLL 0 0 0
+ARROW 6 4 1
+SHIELD 5 3 0
+POTION 5 4 0
+FISH 1 5 0
+ARROW 5 1 0
+6
+SCROLL 0
+CANDY 0
+KEY 0
+KEY 1
+SHIELD 1
+FISH 1
+""".trimIndent()
+
+        val warmupPush = """
+0
+0110 1010 1101 0101 0011 1010 0011
+0110 0101 0101 0111 1001 0110 1101
+1010 1010 0110 0101 1001 0110 0111
+1011 1101 1101 1111 0111 0111 1110
+1101 1001 0110 0101 1001 1010 1010
+0111 1001 0110 1101 0101 0101 1001
+1100 1010 1100 0101 0111 1010 1001
+12 6 6 1010
+12 0 0 1010
+24
+POTION 2 4 1
+SWORD 5 3 0
+MASK 6 3 1
+DIAMOND 6 4 0
+KEY 4 1 0
+BOOK 3 0 0
+FISH 4 0 1
+SHIELD 3 4 1
+CANE 5 6 0
+CANDY 5 1 0
+BOOK 3 6 1
+CANDY 1 5 1
+KEY 2 5 1
+CANE 1 0 1
+MASK 0 3 0
+SWORD 1 3 1
+SCROLL 6 0 0
+ARROW 6 5 1
+SHIELD 3 2 0
+SCROLL 0 6 1
+POTION 4 2 0
+FISH 2 6 0
+DIAMOND 0 2 1
+ARROW 0 1 0
+6
+SCROLL 0
+CANE 0
+CANDY 0
+SCROLL 1
+CANE 1
+CANDY 1 
+""".trimIndent()
+    }
 }
