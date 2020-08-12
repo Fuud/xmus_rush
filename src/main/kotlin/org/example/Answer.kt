@@ -255,7 +255,7 @@ fun performGame() {
                             val domain =
                                 pushAndMove.board.findDomain(pushP, ourNextQuests, enemyQuests, moveDomains, itemsTaken)
                             val score =
-                                ((domain.getOurQuestsCount() * 16 + domain.ourItems * possibleQuestCoef) * 10 + domain.size).toInt()
+                                ((domain.getOurQuestsCount() * 16 + 12 * domain.ourItems * possibleQuestCoef) * 4 + domain.size).toInt()
                             moveScores[point] = moveScores[point]!! + score
                         }
                     }
