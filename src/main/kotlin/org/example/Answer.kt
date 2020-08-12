@@ -237,7 +237,7 @@ fun performGame() {
                             val field = gameBoard[point]
                             val onItem =
                                 if (field.item?.itemPlayerId ?: -1 == we.playerId
-                                    && !field.containsQuestItem(we.playerId, ourNextQuests)
+                                    && !field.containsQuestItem(we.playerId, ourQuests)
                                 ) 1 else 0
                             var fake = Player(-1, -1, point.x, point.y)
                             val pushP = if (pushes.ourPush.direction.isVertical) {
