@@ -714,7 +714,7 @@ fun <U : Comparable<U>> caching(funct: (pushesAndMoves: List<PushAndMove>) -> Co
 
 object PushSelectors {
     fun itemsCountDiff(push: PushAndMove): Int {
-        return push.ourQuestCompleted - push.enemyQuestCompleted
+        return (push.ourQuestCompleted * 100.0 / push.ourPlayer.numPlayerCards - push.enemyQuestCompleted * 100.0 / push.enemyPlayer.numPlayerCards).toInt()
     }
 
     private val itemsCountLevelled = { percentLevel: Double, pushesAndMoves: List<PushAndMove> ->
