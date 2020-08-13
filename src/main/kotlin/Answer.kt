@@ -10,6 +10,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.StringReader
+import java.lang.IllegalStateException
 import java.lang.management.GarbageCollectorMXBean
 import java.lang.management.ManagementFactory
 import java.util.*
@@ -85,6 +86,16 @@ object BoardCache {
 
 val rand = Random(777)
 
+val moveDomains = Domains()
+val moveScores = Point.points.flatten()
+    .map { it to 0 }
+    .toMap().toMutableMap()
+
+
+var lastBoard: GameBoard? = null
+var lastPush: OnePush? = null
+var wasDrawAtPrevMove = false
+
 fun performGame() {
     setupMonitoring()
 
@@ -99,15 +110,8 @@ fun performGame() {
 //        )
 
         // game loop
-        var lastBoard: GameBoard? = null
-        var lastPush: OnePush? = null
-        var wasDrawAtPrevMove = false
 
         val allBoards = mutableMapOf<GameBoard, MutableList<Pushes>>()
-        val moveScores = Point.points.flatten()
-            .map { it to 0 }
-            .toMap().toMutableMap()
-        val moveDomains = Domains()
 
         repeat(150) { step ->
             val start = System.nanoTime()
@@ -134,131 +138,35 @@ fun performGame() {
                         prevMovesAtThisPosition
                     )
 
+                    lastBoard = gameBoard
+                    lastPush = bestMove
+
                     if (step == 0) {
-                        Warmup.warmup(start + TimeUnit.MILLISECONDS.toNanos(800) - System.nanoTime())
+                        Warmup.warmup(start + TimeUnit.MILLISECONDS.toNanos(500) - System.nanoTime())
                     }
 
-                    if (System.nanoTime() - start < TimeUnit.MILLISECONDS.toNanos(30)) {
+                    while (System.nanoTime() - start < TimeUnit.MILLISECONDS.toNanos(30)) {
                         log("time to sleep")
                         Thread.sleep(10)
                     }
 
                     println("PUSH ${bestMove.rowColumn} ${bestMove.direction}")
 
-                    lastBoard = gameBoard
-                    lastPush = bestMove
                 }
 
                 log("Duration: ${TimeUnit.NANOSECONDS.toMillis(duration)}")
 //                }
             } else {
-                val startTime = System.nanoTime()
                 val duration = measureNanoTime {
-                    val lastPush = lastPush!!
-                    val lastBoard = lastBoard!!
-                    wasDrawAtPrevMove = lastBoard == gameBoard
-                    if (!wasDrawAtPrevMove) {
-                        val enemyLastPush = tryFindEnemyPush(lastBoard, gameBoard, lastPush)
-                        if (enemyLastPush != null) {
-                            //todo we lost possible history of draws
-                            allBoards[lastBoard] = mutableListOf(Pushes(lastPush, enemyLastPush))
-                        }
-                    } else {
-                        val previousPushes = allBoards[lastBoard]
-                        if (previousPushes == null) {
-                            allBoards[lastBoard] = mutableListOf(
-                                Pushes(lastPush, lastPush),
-                                Pushes(lastPush, lastPush.copy(direction = lastPush.direction.opposite))
-                            )
-                        } else if (previousPushes.none { it.ourPush == lastPush }) {
-                            previousPushes.add(Pushes(lastPush, lastPush))
-                            previousPushes.add(
-                                Pushes(lastPush, lastPush.copy(direction = lastPush.direction.opposite))
-                            )
-                        }
-                    }
-
-                    val paths = gameBoard.findPaths(we, ourQuests)
-                    //todo there are rare mazes where we can complete any two quests from three
-                    val itemsTaken = paths.maxWith(compareBy { it.itemsTaken.size })!!.itemsTaken
-                    val itemsTakenSize = itemsTaken.size
-                    val ourNextQuests = ourQuests.toMutableList()
-                    ourNextQuests.removeAll(itemsTaken)
-                    val ends = paths.filter { it.itemsTaken.size == itemsTakenSize }
-                        .map { it.point }.toHashSet()
-                    ends.forEach { moveScores[it] = 0 }
-
-                    val timeLimit = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
-
-                    val possibleQuestCoef = if (we.numPlayerCards - ourQuests.size > 0) {
-                        itemsTakenSize * 1.0 / (we.numPlayerCards - ourQuests.size)
-                    } else {
-                        0.0
-                    }
-                    var count = 0
-                    for (pushes in Pushes.allPushes) {
-                        if (System.nanoTime() - startTime > timeLimit) {
-                            log("stop computePushes, computed $count pushes")
-                            break
-                        }
-                        count++
-
-                        val pushAndMove = pushAndMove(
-                            gameBoard,
-                            pushes,
-                            we,
-                            ourNextQuests,
-                            enemy,
-                            enemyQuests
-                        )
-                        if (pushAndMove.board === gameBoard) {
-                            continue
-                        }
-                        moveDomains.clear()
-                        ends.forEach { point ->
-                            var fake = Player(-1, -1, point.x, point.y)
-                            val pushP = if (pushes.ourPush.direction.isVertical) {
-                                fake =
-                                    fake.push(pushes.enemyPush.direction, pushes.enemyPush.rowColumn)
-                                fake = fake.push(pushes.ourPush.direction, pushes.ourPush.rowColumn)
-                                fake.point
-                            } else {
-                                fake = fake.push(pushes.ourPush.direction, pushes.ourPush.rowColumn)
-                                fake =
-                                    fake.push(pushes.enemyPush.direction, pushes.enemyPush.rowColumn)
-                                fake.point
-                            }
-                            val domain =
-                                pushAndMove.board.findDomain(pushP, ourNextQuests, enemyQuests, moveDomains, itemsTaken)
-                            val score =
-                                ((domain.getOurQuestsCount() * 16 + 12 * domain.ourItems * possibleQuestCoef) * 4 + domain.size).toInt()
-                            moveScores[point] = moveScores[point]!! + score
-                        }
-                    }
-
-                    val pathsComparator = compareBy<PathElem> { pathElem ->
-                        pathElem.itemsTaken.size
-                    }.thenComparing { pathElem ->
-                        moveScores[pathElem.point]!!
-                    }.thenComparing { pathElem ->
-                        max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
-                    }.thenComparing { pathElem ->
-                        val ourField = gameBoard.ourField
-                        if (ourField.containsQuestItem(we.playerId, ourQuests)) {
-                            val (x, y) = pathElem.point
-                            if ((x == 0 || x == 6) && (y == 0 || y == 6)) {
-                                1
-                            } else {
-                                0
-                            }
-                        } else {
-                            0
-                        }
-                    }.thenComparing { pathElem ->
-                        gameBoard[pathElem.point].tile.roads
-                    }
-
-                    val bestPath = paths.maxWith(pathsComparator)
+                    val bestPath = findBestMove(
+                        gameBoard,
+                        allBoards,
+                        we,
+                        ourQuests,
+                        step,
+                        enemy,
+                        enemyQuests
+                    )
 
                     if (System.nanoTime() - start < TimeUnit.MILLISECONDS.toNanos(30)) {
                         log("time to sleep")
@@ -289,6 +197,125 @@ fun performGame() {
         t.printStackTrace()
         throw t
     }
+}
+
+private fun findBestMove(
+    gameBoard: GameBoard,
+    allBoards: MutableMap<GameBoard, MutableList<Pushes>>,
+    we: Player,
+    ourQuests: List<String>,
+    step: Int,
+    enemy: Player,
+    enemyQuests: List<String>
+): PathElem? {
+    log("findBestMove")
+    val startTime = System.nanoTime()
+    val lastPush = lastPush!!
+    val lastBoard = lastBoard!!
+    wasDrawAtPrevMove = lastBoard == gameBoard
+    if (!wasDrawAtPrevMove) {
+        val enemyLastPush = tryFindEnemyPush(lastBoard, gameBoard, lastPush)
+        if (enemyLastPush != null) {
+            //todo we lost possible history of draws
+            allBoards[lastBoard] = mutableListOf(Pushes(lastPush, enemyLastPush))
+        }
+    } else {
+        val previousPushes = allBoards[lastBoard]
+        if (previousPushes == null) {
+            allBoards[lastBoard] = mutableListOf(
+                Pushes(lastPush, lastPush),
+                Pushes(lastPush, lastPush.copy(direction = lastPush.direction.opposite))
+            )
+        } else if (previousPushes.none { it.ourPush == lastPush }) {
+            previousPushes.add(Pushes(lastPush, lastPush))
+            previousPushes.add(
+                Pushes(lastPush, lastPush.copy(direction = lastPush.direction.opposite))
+            )
+        }
+    }
+
+    val paths = gameBoard.findPaths(we, ourQuests)
+    //todo there are rare mazes where we can complete any two quests from three
+    val itemsTaken = paths.maxWith(compareBy { it.itemsTaken.size })!!.itemsTaken
+    val itemsTakenSize = itemsTaken.size
+    val ourNextQuests = ourQuests.toMutableList()
+    ourNextQuests.removeAll(itemsTaken)
+    val ends = paths.filter { it.itemsTaken.size == itemsTakenSize }
+        .map { it.point }.toHashSet()
+    ends.forEach { moveScores[it] = 0 }
+
+    val timeLimit = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
+
+    val possibleQuestCoef = if (we.numPlayerCards - ourQuests.size > 0) {
+        itemsTakenSize * 1.0 / (we.numPlayerCards - ourQuests.size)
+    } else {
+        0.0
+    }
+    var count = 0
+    for (pushes in Pushes.allPushes) {
+        if (System.nanoTime() - startTime > timeLimit) {
+            log("stop computePushes, computed $count pushes")
+            break
+        }
+        count++
+
+        val pushAndMove = pushAndMove(
+            gameBoard,
+            pushes,
+            we,
+            ourNextQuests,
+            enemy,
+            enemyQuests
+        )
+        if (pushAndMove.board === gameBoard) {
+            continue
+        }
+        moveDomains.clear()
+        ends.forEach { point ->
+            var fake = Player(-1, -1, point.x, point.y)
+            val pushP = if (pushes.ourPush.direction.isVertical) {
+                fake =
+                    fake.push(pushes.enemyPush.direction, pushes.enemyPush.rowColumn)
+                fake = fake.push(pushes.ourPush.direction, pushes.ourPush.rowColumn)
+                fake.point
+            } else {
+                fake = fake.push(pushes.ourPush.direction, pushes.ourPush.rowColumn)
+                fake =
+                    fake.push(pushes.enemyPush.direction, pushes.enemyPush.rowColumn)
+                fake.point
+            }
+            val domain =
+                pushAndMove.board.findDomain(pushP, ourNextQuests, enemyQuests, moveDomains, itemsTaken)
+            val score =
+                ((domain.getOurQuestsCount() * 16 + 12 * domain.ourItems * possibleQuestCoef) * 4 + domain.size).toInt()
+            moveScores[point] = moveScores[point]!! + score
+        }
+    }
+
+    val pathsComparator = compareBy<PathElem> { pathElem ->
+        pathElem.itemsTaken.size
+    }.thenComparing { pathElem ->
+        moveScores[pathElem.point]!!
+    }.thenComparing { pathElem ->
+        max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
+    }.thenComparing { pathElem ->
+        val ourField = gameBoard.ourField
+        if (ourField.containsQuestItem(we.playerId, ourQuests)) {
+            val (x, y) = pathElem.point
+            if ((x == 0 || x == 6) && (y == 0 || y == 6)) {
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    }.thenComparing { pathElem ->
+        gameBoard[pathElem.point].tile.roads
+    }
+
+    val bestPath = paths.maxWith(pathsComparator)
+    return bestPath
 }
 
 fun tryFindEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: OnePush): OnePush? {
@@ -369,7 +396,21 @@ data class InputConditions(
     var enemy: Player
 )
 
-data class OnePush(val direction: Direction, val rowColumn: Int)
+data class OnePush(val direction: Direction, val rowColumn: Int) {
+    val idx = direction.ordinal * 7 + rowColumn
+
+    companion object {
+        val allPushes = Direction.allDirections.flatMap { dir -> (0..6).map { OnePush(dir, it) } }
+
+        fun byIdx(idx: Int) = allPushes[idx]
+    }
+
+    override fun toString(): String {
+        return "${direction.name.first()}$rowColumn"
+    }
+
+
+}
 
 data class Pushes(val ourPush: OnePush, val enemyPush: OnePush) {
     companion object {
@@ -441,32 +482,120 @@ private fun findBestPush(
     prevPushesAtThisPosition: List<Pushes>? = null
 ): OnePush {
 
-    val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
-            || (we.numPlayerCards == enemy.numPlayerCards && gameBoard.step < 50))
+    val startTimeNanos = System.nanoTime()
+    val timeLimitNanos = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
+    val deadlineTimeNanos = timeLimitNanos + startTimeNanos
 
-    val weHaveSeenThisPositionBefore = prevPushesAtThisPosition != null
-    val forbiddenPushMoves = if (weHaveSeenThisPositionBefore && weLoseOrDrawAtEarlyGame) {
-        //let's forbid random one push
-        val ourPushInSamePosition = prevPushesAtThisPosition!![rand.nextInt(prevPushesAtThisPosition.size)].ourPush
-        listOf(
-            ourPushInSamePosition,
-            ourPushInSamePosition.copy(direction = ourPushInSamePosition.direction.opposite)
-        )
-    } else {
-        emptyList()
-    }
+//    val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
+//            || (we.numPlayerCards == enemy.numPlayerCards && gameBoard.step < 50))
+//
+//    val weHaveSeenThisPositionBefore = prevPushesAtThisPosition != null
+//    val forbiddenPushMoves = if (weHaveSeenThisPositionBefore && weLoseOrDrawAtEarlyGame) {
+//        //let's forbid random one push
+//        val ourPushInSamePosition = prevPushesAtThisPosition!![rand.nextInt(prevPushesAtThisPosition.size)].ourPush
+//        listOf(
+//            ourPushInSamePosition,
+//            ourPushInSamePosition.copy(direction = ourPushInSamePosition.direction.opposite)
+//        )
+//    } else {
+//        emptyList()
+//    }
 
     val pushes = computePushes(
         gameBoard,
         we,
         ourQuests,
-        forbiddenPushMoves,
+        emptyList(),
         enemy,
         enemyQuests,
         prevPushesAtThisPosition,
-        timeLimitNanos = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
+        timeLimitNanos = timeLimitNanos
     )
 
+    return if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(20)) {
+        selectBestPushByTwoComparators(pushes)
+    } else {
+        selectBestPushByMatrixSolver(pushes, deadlineTimeNanos)
+    }
+}
+
+private fun selectBestPushByMatrixSolver(pushes: List<PushAndMove>, deadlineTimeNanos: Long): OnePush {
+    fun score(push: PushAndMove): Int {
+        return (itemsCountDiff(push) * 100 + pushOutItems(push)) * 100 + space(push)
+    }
+
+    val byOurPush = Array<IntArray>(28) { IntArray(28) { 0 } }
+    val byEnemyPush = Array<IntArray>(28) { IntArray(28) { 0 } }
+
+    var maxScore = Integer.MIN_VALUE
+    var maxOurMove = -1
+    for (push in pushes) {
+        val score = score(push)
+        byOurPush[push.pushes.ourPush.idx][push.pushes.enemyPush.idx] = score
+        byEnemyPush[push.pushes.enemyPush.idx][push.pushes.ourPush.idx] = score
+        if (score > maxScore) {
+            maxScore = score
+            maxOurMove = push.pushes.ourPush.idx
+        }
+    }
+
+    val ourStrategy = IntArray(28) { 0 }
+    val enemyStrategy = IntArray(28) { 0 }
+
+    ourStrategy[maxOurMove] = 1
+
+    while (deadlineTimeNanos > System.nanoTime()) {
+        run {
+            var minEnemyScore = Integer.MAX_VALUE
+            var minEnemyMove = -1
+
+            for (enemyMove in (0..27)) {
+                var score = 0
+                for (ourMove in (0..27)) {
+                    score += byEnemyPush[enemyMove][ourMove] * ourStrategy[ourMove]
+                }
+                if (score < minEnemyScore) {
+                    minEnemyScore = score
+                    minEnemyMove = enemyMove
+                }
+            }
+            enemyStrategy[minEnemyMove] += 1
+        }
+        run {
+            var maxOurScore = Integer.MIN_VALUE
+            var maxOurMove = -1
+            for (ourMove in (0..27)) {
+                var score = 0
+                for (enemyMove in (0..27)) {
+                    score += byOurPush[ourMove][enemyMove] * enemyStrategy[enemyMove]
+                }
+                if (score > maxOurScore) {
+                    maxOurScore = score
+                    maxOurMove = ourMove
+                }
+            }
+            ourStrategy[maxOurMove] += 1
+        }
+    }
+
+    val sum = ourStrategy.sum()
+
+    val selection = rand.nextInt(sum) + 1
+
+    log("OurStrategy: ${ourStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to score * 1.0 / sum }}")
+
+    var currentSum = 0
+    for (idx in (0..28)) {
+        currentSum += ourStrategy[idx]
+        if (currentSum >= selection) {
+            return OnePush.byIdx(idx)
+        }
+    }
+
+    throw IllegalStateException("aaaaa")
+}
+
+private fun selectBestPushByTwoComparators(pushes: List<PushAndMove>): OnePush {
     val comparator =
         caching(PushSelectors.itemsCountDiffMin)
             .thenComparing(caching(PushSelectors.itemsCountDiffAvg))
@@ -493,6 +622,10 @@ private fun findBestPush(
         .map { it.first }
         .toList()
 
+    enemyBestMoves.mapIndexed { index, onePush ->
+        log("Expected enemy move #$index is $onePush")
+    }
+
     val (bestMove) = pushes
         .filter { enemyBestMoves.contains(it.pushes.enemyPush) }
         .groupBy { it.pushes.ourPush }
@@ -518,7 +651,7 @@ fun computePushes(
     enemyQuests: List<String>,
     expectedEnemyMoves: List<Pushes>? = null,
     timeLimitNanos: Long
-): MutableList<PushAndMove> {
+): List<PushAndMove> {
     val startTime = System.nanoTime()
 
     val result = mutableListOf<PushAndMove>()
@@ -527,18 +660,18 @@ fun computePushes(
             log("stop computePushes, computed ${result.size} pushes")
             return result
         }
-        if (expectedEnemyMoves != null) {
-            var shouldProcess = false
-            for (push in expectedEnemyMoves) {
-                if (push.enemyPush == pushes.enemyPush) {
-                    shouldProcess = true
-                    break
-                }
-            }
-            if (!shouldProcess) {
-                continue
-            }
-        }
+//        if (expectedEnemyMoves != null) {
+//            var shouldProcess = false
+//            for (push in expectedEnemyMoves) {
+//                if (push.enemyPush == pushes.enemyPush) {
+//                    shouldProcess = true
+//                    break
+//                }
+//            }
+//            if (!shouldProcess) {
+//                continue
+//            }
+//        }
         if (forbiddenPushMoves.contains(pushes.ourPush)) {
             continue
         }
@@ -1348,7 +1481,15 @@ class Warmup {
                 if (System.nanoTime() > start + limitNanos) {
                     break
                 }
-                toMove.gameBoard.findPaths(toMove.we, toMove.ourQuests)
+                findBestMove(
+                    gameBoard = toMove.gameBoard,
+                    allBoards = mutableMapOf(),
+                    we = toMove.we,
+                    ourQuests = toMove.ourQuests,
+                    step = 1,
+                    enemy = toMove.enemy,
+                    enemyQuests = toMove.enemyQuests
+                )
             }
         }
 
