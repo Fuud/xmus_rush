@@ -1,3 +1,5 @@
+@file:Suppress("NAME_SHADOWING", "UnnecessaryVariable")
+
 import Direction.*
 import Item.Companion.isBelongToQuest
 import Item.Companion.questMask
@@ -16,37 +18,14 @@ import javax.management.NotificationEmitter
 import javax.management.NotificationListener
 import kotlin.collections.ArrayList
 import kotlin.collections.component1
-import kotlin.collections.component2
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.system.measureNanoTime
-import kotlin.system.measureTimeMillis
-
-
-object Test {
-    @JvmStatic
-    fun main(args: Array<String>) {
-        val input = Scanner(
-            StringReader(
-                """""".trimIndent()
-            )
-        )
-
-        val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input, 0)
-        while (true) {
-            val duration = measureTimeMillis {
-                val bestMove = findBestPush(we, enemy, gameBoard, ourQuests, enemyQuests, 0)
-                println(bestMove)
-            }
-            println(duration)
-        }
-    }
-}
 
 /**
  * Help the Christmas elves fetch presents in a magical labyrinth!
  **/
-fun main(args: Array<String>) {
+fun main() {
     performGame()
 }
 
@@ -182,16 +161,14 @@ fun performGame() {
                         val enemyLastPush = tryFindEnemyPush(lastBoard, gameBoard, lastPush)
                         if (enemyLastPush != null) {
                             //todo we lost possible history of draws
-                            allBoards.put(lastBoard, mutableListOf(Pushes(lastPush, enemyLastPush)))
+                            allBoards[lastBoard] = mutableListOf(Pushes(lastPush, enemyLastPush))
                         }
                     } else {
-                        val previousPushes = allBoards.get(lastBoard)
+                        val previousPushes = allBoards[lastBoard]
                         if (previousPushes == null) {
-                            allBoards.put(
-                                lastBoard, mutableListOf(
-                                    Pushes(lastPush, lastPush),
-                                    Pushes(lastPush, lastPush.copy(direction = lastPush.direction.opposite))
-                                )
+                            allBoards[lastBoard] = mutableListOf(
+                                Pushes(lastPush, lastPush),
+                                Pushes(lastPush, lastPush.copy(direction = lastPush.direction.opposite))
                             )
                         } else if (previousPushes.none { it.ourPush == lastPush }) {
                             previousPushes.add(Pushes(lastPush, lastPush))
@@ -218,10 +195,10 @@ fun performGame() {
                     } else {
                         0.0
                     }
-                    var count = 0;
+                    var count = 0
                     for (pushes in Pushes.allPushes) {
                         if (System.nanoTime() - startTime > timeLimit) {
-                            log("stop computePushes, computed ${count} pushes")
+                            log("stop computePushes, computed $count pushes")
                             break
                         }
                         count++
@@ -239,7 +216,6 @@ fun performGame() {
                         }
                         moveDomains.clear()
                         ends.forEach { point ->
-                            val field = gameBoard[point]
                             var fake = Player(-1, -1, point.x, point.y)
                             val pushP = if (pushes.ourPush.direction.isVertical) {
                                 fake =
@@ -365,7 +341,7 @@ private fun readInput(input: Scanner, step: Int): InputConditions {
     val ourQuests = quests.filter { it.questPlayerId == 0 }.map { it.questItemName }
     val enemyQuests = quests.filter { it.questPlayerId == 1 }.map { it.questItemName }
 
-    val boardArray = Array<Field>(7 * 7) { idx ->
+    val boardArray = Array(7 * 7) { idx ->
         val x = idx % 7
         val y = idx / 7
         Field(
@@ -431,8 +407,8 @@ data class PushAndMove(
         pooledDomains.clear()
     }
 
-    val ourDomain = board.findDomain(ourPlayer.point, ourQuests, enemyQuests, pooledDomains, emptyList())
-    val enemyDomain = board.findDomain(enemyPlayer.point, ourQuests, enemyQuests, pooledDomains, emptyList())
+    private val ourDomain = board.findDomain(ourPlayer.point, ourQuests, enemyQuests, pooledDomains, emptyList())
+    private val enemyDomain = board.findDomain(enemyPlayer.point, ourQuests, enemyQuests, pooledDomains, emptyList())
     val ourFieldOnHand = board.ourField
     val enemyFieldOnHand = board.enemyField
 
@@ -504,6 +480,7 @@ private fun findBestPush(
             .thenComparing(caching(PushSelectors.spaceAvg))
 
     val enemyBestMoves = pushes
+        .asSequence()
         .groupBy { it.pushes.enemyPush }
         .toList()
         .sortedWith(Comparator { left, right ->
@@ -514,8 +491,9 @@ private fun findBestPush(
         })
         .take(10)
         .map { it.first }
+        .toList()
 
-    val (bestMove, bestScore) = pushes
+    val (bestMove) = pushes
         .filter { enemyBestMoves.contains(it.pushes.enemyPush) }
         .groupBy { it.pushes.ourPush }
         .maxWith(Comparator { left, right ->
@@ -553,7 +531,7 @@ fun computePushes(
             var shouldProcess = false
             for (push in expectedEnemyMoves) {
                 if (push.enemyPush == pushes.enemyPush) {
-                    shouldProcess = true;
+                    shouldProcess = true
                     break
                 }
             }
@@ -594,7 +572,7 @@ private fun pushAndMove(
         enemyRowColumn == rowColumn && (direction == enemyDirection || direction == enemyDirection.opposite)
 
     val sortedActions = if (draw) {
-        emptyList<Action>()
+        emptyList()
     } else {
         listOf(
             Action(OnePush(direction, rowColumn), isEnemy = false),
@@ -632,6 +610,7 @@ private fun pushAndMove(
     return pushAndMove
 }
 
+@Suppress("unused")
 private fun comparePathsWithDomains(
     newBoard: GameBoard,
     ourPlayer: Player,
@@ -657,10 +636,11 @@ private fun comparePathsWithDomains(
 
 }
 
+@Suppress("unused", "NestedLambdaShadowedImplicitParameter")
 class PushResultTable(pushes: List<PushAndMove>) {
     data class PushResult(val itemsCountDiff: Int, val pushOutItems: Int, val space: Int)
 
-    fun calcPushResult(push: PushAndMove): PushResult {
+    private fun calcPushResult(push: PushAndMove): PushResult {
         return PushResult(
             itemsCountDiff(push),
             pushOutItems(push),
@@ -668,7 +648,7 @@ class PushResultTable(pushes: List<PushAndMove>) {
         )
     }
 
-    val table = pushes
+    private val table = pushes
         .groupBy { it.pushes.ourPush }
         .mapValues {
             it.value.map { it.pushes.enemyPush to calcPushResult(it) }.toMap()
@@ -703,6 +683,7 @@ class PushResultTable(pushes: List<PushAndMove>) {
     }
 }
 
+@Suppress("UNCHECKED_CAST")
 fun <U : Comparable<U>> caching(funct: (pushesAndMoves: List<PushAndMove>) -> Comparable<U>): Comparator<List<PushAndMove>> {
     val cache = IdentityHashMap<Any, Any>()
     return compareBy { pushesAndMoves: List<PushAndMove> ->
@@ -717,24 +698,6 @@ object PushSelectors {
         return (push.ourQuestCompleted * 100.0 / push.ourPlayer.numPlayerCards - push.enemyQuestCompleted * 100.0 / push.enemyPlayer.numPlayerCards).toInt()
     }
 
-    private val itemsCountLevelled = { percentLevel: Double, pushesAndMoves: List<PushAndMove> ->
-        val firstThatMatch = (3 downTo -3).find { count ->
-            val averageForLevel = pushesAndMoves.map {
-                if (itemsCountDiff(it) >= count) {
-                    1
-                } else {
-                    0
-                }
-            }.average()
-
-            averageForLevel >= percentLevel
-        }
-        firstThatMatch
-    }
-
-    val itemsCountDiff_50p = { pushesAndMoves: List<PushAndMove> -> itemsCountLevelled(0.50, pushesAndMoves) }
-    val itemsCountDiff_75p = { pushesAndMoves: List<PushAndMove> -> itemsCountLevelled(0.75, pushesAndMoves) }
-
     private val itemCountDiff = { pushesAndMoves: List<PushAndMove> ->
         pushesAndMoves.map(this::itemsCountDiff)
     }
@@ -742,16 +705,6 @@ object PushSelectors {
     val itemsCountDiffMax = { pushesAndMoves: List<PushAndMove> -> itemCountDiff(pushesAndMoves).max()!! }
     val itemsCountDiffMin = { pushesAndMoves: List<PushAndMove> -> itemCountDiff(pushesAndMoves).min()!! }
     val itemsCountDiffAvg = { pushesAndMoves: List<PushAndMove> -> itemCountDiff(pushesAndMoves).average() }
-
-    private val selfItemsCount = { pushesAndMoves: List<PushAndMove> ->
-        pushesAndMoves.map {
-            val ourScore = it.ourQuestCompleted
-            ourScore
-        }
-    }
-
-    val selfItemsMax = { pushesAndMoves: List<PushAndMove> -> selfItemsCount(pushesAndMoves).max()!! }
-    val selfItemsAvg = { pushesAndMoves: List<PushAndMove> -> selfItemsCount(pushesAndMoves).average() }
 
     fun pushOutItems(push: PushAndMove): Int {
         val ourScore = pushOutItems(push, push.ourPlayer.playerId, push.ourQuests)
@@ -794,8 +747,6 @@ object PushSelectors {
         }
     }
 
-    val pushOutItemsMax = { pushesAndMoves: List<PushAndMove> -> pushOutItems(pushesAndMoves).max()!! }
-    val pushOutItemsMin = { pushesAndMoves: List<PushAndMove> -> pushOutItems(pushesAndMoves).min()!! }
     val pushOutItemsAvg = { pushesAndMoves: List<PushAndMove> -> pushOutItems(pushesAndMoves).average() }
 
     fun space(push: PushAndMove): Int {
@@ -808,8 +759,6 @@ object PushSelectors {
         }
     }
 
-    val spaceMax = { pushesAndMoves: List<PushAndMove> -> space(pushesAndMoves).max()!! }
-    val spaceMin = { pushesAndMoves: List<PushAndMove> -> space(pushesAndMoves).min()!! }
     val spaceAvg = { pushesAndMoves: List<PushAndMove> -> space(pushesAndMoves).average() }
 }
 
@@ -889,7 +838,7 @@ class Domains {
 
 data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyField: Field) {
     var step: Int = 0
-    val cachedPaths = arrayOfNulls<MutableList<PathElem>>(2)
+    private val cachedPaths = arrayOfNulls<MutableList<PathElem>>(2)
 
     companion object {
         val pooledList1 = arrayListOf<PathElem>()
@@ -968,7 +917,7 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
             fun coordInVisited(newPoint: Point, newItems: Collection<String>): Int {
                 val x = newPoint.x
                 val y = newPoint.y
-                val firstItem = if (quests.size > 0 && newItems.contains(quests[0])) 1 else 0
+                val firstItem = if (quests.isNotEmpty() && newItems.contains(quests[0])) 1 else 0
                 val secondItem = if (quests.size > 1 && newItems.contains(quests[1])) 1 else 0
                 val thirdItem = if (quests.size > 2 && newItems.contains(quests[2])) 1 else 0
 
@@ -1077,22 +1026,22 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
     }
 
 
-    fun Point.can(direction: Direction) = when (direction) {
+    private fun Point.can(direction: Direction) = when (direction) {
         UP -> canUp(this)
         DOWN -> canDown(this)
         LEFT -> canLeft(this)
         RIGHT -> canRight(this)
     }
 
-    fun canUp(point: Point) = canUp(point.x, point.y)
-    fun canRight(point: Point) = canRight(point.x, point.y)
-    fun canDown(point: Point) = canDown(point.x, point.y)
-    fun canLeft(point: Point) = canLeft(point.x, point.y)
+    private fun canUp(point: Point) = canUp(point.x, point.y)
+    private fun canRight(point: Point) = canRight(point.x, point.y)
+    private fun canDown(point: Point) = canDown(point.x, point.y)
+    private fun canLeft(point: Point) = canLeft(point.x, point.y)
 
-    fun canUp(x: Int, y: Int) = (y > 0) && get(y, x).connect(get(y - 1, x), UP)
-    fun canRight(x: Int, y: Int) = (x < 6) && get(y, x).connect(get(y, x + 1), RIGHT)
-    fun canDown(x: Int, y: Int) = (y < 6) && get(y, x).connect(get(y + 1, x), DOWN)
-    fun canLeft(x: Int, y: Int) = (x > 0) && get(y, x).connect(get(y, x - 1), LEFT)
+    private fun canUp(x: Int, y: Int) = (y > 0) && get(y, x).connect(get(y - 1, x), UP)
+    private fun canRight(x: Int, y: Int) = (x < 6) && get(y, x).connect(get(y, x + 1), RIGHT)
+    private fun canDown(x: Int, y: Int) = (y < 6) && get(y, x).connect(get(y + 1, x), DOWN)
+    private fun canLeft(x: Int, y: Int) = (x > 0) && get(y, x).connect(get(y, x - 1), LEFT)
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -1124,6 +1073,7 @@ private operator fun <T> List<List<T>>.get(point: Point): T {
 }
 
 
+@Suppress("DataClassPrivateConstructor")
 data class Point private constructor(val x: Int, val y: Int) {
     val idx = y * 7 + x
     var up: Point? = null
@@ -1164,8 +1114,8 @@ data class Point private constructor(val x: Int, val y: Int) {
             }
         }
 
-        val point_minus2 = Point(-2, -2)
-        val point_minus1 = Point(-1, -1)
+        private val point_minus2 = Point(-2, -2)
+        private val point_minus1 = Point(-1, -1)
 
         init {
             (0..6).forEach { x ->
@@ -1196,6 +1146,7 @@ data class Point private constructor(val x: Int, val y: Int) {
     }
 }
 
+@Suppress("unused")
 enum class Tile(val mask: Int, val roads: Int) {
     T0011(0b0011, 2),
     T0101(0b0101, 2),
@@ -1290,7 +1241,7 @@ data class ItemDto(val itemName: String, val itemX: Int, val itemY: Int, val ite
 }
 
 class Quest(input: Scanner) {
-    val questItemName = input.next()
+    val questItemName: String = input.next()
     val questPlayerId = input.nextInt()
 }
 
@@ -1309,20 +1260,12 @@ enum class Direction(val mask: Int, val isVertical: Boolean, val priority: Int) 
         }
 
     companion object {
-        val allDirections = Direction.values().toList()
+        val allDirections = values().toList()
     }
 }
 
 
-fun <T> List<List<T>>.transpose(): List<List<T>> {
-    return (this[0].indices).map { x ->
-        (this.indices).map { y ->
-            this[y][x]
-        }
-    }
-}
-
-class TeeInputStream(protected var source: InputStream, protected var copySink: OutputStream) : InputStream() {
+class TeeInputStream(private var source: InputStream, private var copySink: OutputStream) : InputStream() {
     @Throws(IOException::class)
     override fun read(): Int {
         val result = source.read()
@@ -1410,7 +1353,7 @@ class Warmup {
         }
 
 
-        val warmupMove = """
+        private val warmupMove = """
 1
 0011 1010 0110 0111 0011 1010 1010
 1010 1101 0110 1010 0111 0110 0110
@@ -1446,7 +1389,7 @@ SHIELD 1
 FISH 1
 """.trimIndent()
 
-        val warmupPush = """
+        private val warmupPush = """
 0
 0110 1010 1101 0101 0011 1010 0011
 0110 0101 0101 0111 1001 0110 1101
