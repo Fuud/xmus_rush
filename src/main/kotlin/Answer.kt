@@ -99,6 +99,8 @@ var wasDrawAtPrevMove = false
 fun performGame() {
     setupMonitoring()
 
+    Warmup.warmupOnce()
+
     try {
 //        val input = Scanner(System.`in`)
         val input = Scanner(TeeInputStream(System.`in`, System.err))
@@ -790,12 +792,12 @@ class PushResultTable(pushes: List<PushAndMove>) {
     override fun toString(): String {
         val header =
             "our\\enemy |  " + Direction.allDirections.flatMap { dir ->
-                    (0..6).map { rc ->
-                        "${dir.name.padStart(
-                            5
-                        )}$rc"
-                    }
+                (0..6).map { rc ->
+                    "${dir.name.padStart(
+                        5
+                    )}$rc"
                 }
+            }
                 .joinToString(separator = "    | ")
         val rows = Direction.allDirections.flatMap { dir ->
             (0..6).map { rc ->
@@ -1458,43 +1460,63 @@ class TeeInputStream(private var source: InputStream, private var copySink: Outp
 
 }
 
-class Warmup {
-    companion object {
+object Warmup {
 
-        fun warmup(limitNanos: Long) {
-            val start = System.nanoTime()
-            val toPush = readInput(Scanner(StringReader(warmupPush)), 0)
-            val toMove = readInput(Scanner(StringReader(warmupMove)), 1)
+    fun warmupOnce() {
+        log("warmup once started")
+        lastPush = findBestPush(
+            toPush.we,
+            toPush.enemy,
+            toPush.gameBoard,
+            toPush.ourQuests,
+            toPush.enemyQuests,
+            step = -2 // small limit
+        )
+        lastBoard = toPush.gameBoard
+        log("warmup once move")
+        findBestMove(
+            gameBoard = toMove.gameBoard,
+            allBoards = mutableMapOf(),
+            we = toMove.we,
+            ourQuests = toMove.ourQuests,
+            step = 1,
+            enemy = toMove.enemy,
+            enemyQuests = toMove.enemyQuests
+        )
+    }
 
-            while (true) {
-                if (System.nanoTime() > start + limitNanos) {
-                    break
-                }
-                findBestPush(
-                    toPush.we,
-                    toPush.enemy,
-                    toPush.gameBoard,
-                    toPush.ourQuests,
-                    toPush.enemyQuests,
-                    step = -2 // small limit
-                )
-                if (System.nanoTime() > start + limitNanos) {
-                    break
-                }
-                findBestMove(
-                    gameBoard = toMove.gameBoard,
-                    allBoards = mutableMapOf(),
-                    we = toMove.we,
-                    ourQuests = toMove.ourQuests,
-                    step = 1,
-                    enemy = toMove.enemy,
-                    enemyQuests = toMove.enemyQuests
-                )
+    fun warmup(limitNanos: Long) {
+        val start = System.nanoTime()
+
+        while (true) {
+            if (System.nanoTime() > start + limitNanos) {
+                break
             }
+            findBestPush(
+                toPush.we,
+                toPush.enemy,
+                toPush.gameBoard,
+                toPush.ourQuests,
+                toPush.enemyQuests,
+                step = -2 // small limit
+            )
+            if (System.nanoTime() > start + limitNanos) {
+                break
+            }
+            findBestMove(
+                gameBoard = toMove.gameBoard,
+                allBoards = mutableMapOf(),
+                we = toMove.we,
+                ourQuests = toMove.ourQuests,
+                step = 1,
+                enemy = toMove.enemy,
+                enemyQuests = toMove.enemyQuests
+            )
         }
+    }
 
 
-        private val warmupMove = """
+    private val warmupMove = """
 1
 0011 1010 0110 0111 0011 1010 1010
 1010 1101 0110 1010 0111 0110 0110
@@ -1530,7 +1552,7 @@ SHIELD 1
 FISH 1
 """.trimIndent()
 
-        private val warmupPush = """
+    private val warmupPush = """
 0
 0110 1010 1101 0101 0011 1010 0011
 0110 0101 0101 0111 1001 0110 1101
@@ -1574,5 +1596,7 @@ SCROLL 1
 CANE 1
 CANDY 1 
 """.trimIndent()
-    }
+
+    val toPush = readInput(Scanner(StringReader(warmupPush)), 0)
+    val toMove = readInput(Scanner(StringReader(warmupMove)), 1)
 }
