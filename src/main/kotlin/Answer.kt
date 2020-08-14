@@ -13,6 +13,7 @@ import java.io.StringReader
 import java.lang.IllegalStateException
 import java.lang.management.GarbageCollectorMXBean
 import java.lang.management.ManagementFactory
+import java.text.DecimalFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 import javax.management.NotificationEmitter
@@ -33,6 +34,10 @@ fun main() {
 val startTime = System.currentTimeMillis()
 fun log(s: Any?) {
     System.err.println("\n#[${System.currentTimeMillis() - startTime}] $s\n")
+}
+
+val twoDigitsAfterDotFormat = DecimalFormat().apply {
+    maximumFractionDigits = 2
 }
 
 fun setupMonitoring() {
@@ -580,11 +585,14 @@ private fun selectBestPushByMatrixSolver(pushes: List<PushAndMove>, deadlineTime
         }
     }
 
-    val sum = ourStrategy.sum()
+    val ourSum = ourStrategy.sum()
+    val enemySum = enemyStrategy.sum()
 
-    val selection = rand.nextInt(sum) + 1
+    val selection = rand.nextInt(ourSum) + 1
 
-    log("OurStrategy: ${ourStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to score * 1.0 / sum }}")
+    log("Our iterations: $ourSum, enemy iteration: $enemySum")
+    log("OurStrategy: ${ourStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to (score * 1.0 / ourSum)}.sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
+    log("EnemyStrategy: ${enemyStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to (score * 1.0 / ourSum)}.sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
 
     var currentSum = 0
     for (idx in (0..28)) {
