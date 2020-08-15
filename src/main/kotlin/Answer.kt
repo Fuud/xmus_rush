@@ -515,7 +515,6 @@ private fun findBestPush(
         emptyList(),
         enemy,
         enemyQuests,
-        prevPushesAtThisPosition,
         timeLimitNanos = timeLimitNanos
     )
 
@@ -591,8 +590,10 @@ private fun selectBestPushByMatrixSolver(pushes: List<PushAndMove>, deadlineTime
     val selection = rand.nextInt(ourSum) + 1
 
     log("Our iterations: $ourSum, enemy iteration: $enemySum")
-    log("OurStrategy: ${ourStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to (score * 1.0 / ourSum)}.sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
-    log("EnemyStrategy: ${enemyStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to (score * 1.0 / ourSum)}.sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
+    log("OurStrategy: ${ourStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to (score * 1.0 / ourSum) }
+        .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
+    log("EnemyStrategy: ${enemyStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to (score * 1.0 / ourSum) }
+        .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
 
     var currentSum = 0
     for (idx in (0..28)) {
@@ -659,7 +660,6 @@ fun computePushes(
     forbiddenPushMoves: List<OnePush> = emptyList(),
     enemy: Player,
     enemyQuests: List<String>,
-    expectedEnemyMoves: List<Pushes>? = null,
     timeLimitNanos: Long
 ): List<PushAndMove> {
     val startTime = System.nanoTime()
@@ -670,18 +670,6 @@ fun computePushes(
             log("stop computePushes, computed ${result.size} pushes")
             return result
         }
-//        if (expectedEnemyMoves != null) {
-//            var shouldProcess = false
-//            for (push in expectedEnemyMoves) {
-//                if (push.enemyPush == pushes.enemyPush) {
-//                    shouldProcess = true
-//                    break
-//                }
-//            }
-//            if (!shouldProcess) {
-//                continue
-//            }
-//        }
         if (forbiddenPushMoves.contains(pushes.ourPush)) {
             continue
         }
@@ -800,12 +788,12 @@ class PushResultTable(pushes: List<PushAndMove>) {
     override fun toString(): String {
         val header =
             "our\\enemy |  " + Direction.allDirections.flatMap { dir ->
-                (0..6).map { rc ->
-                    "${dir.name.padStart(
-                        5
-                    )}$rc"
+                    (0..6).map { rc ->
+                        "${dir.name.padStart(
+                            5
+                        )}$rc"
+                    }
                 }
-            }
                 .joinToString(separator = "    | ")
         val rows = Direction.allDirections.flatMap { dir ->
             (0..6).map { rc ->
