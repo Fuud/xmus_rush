@@ -521,8 +521,148 @@ private fun findBestPush(
     return if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(20)) {
         selectBestPushByTwoComparators(pushes)
     } else {
-        selectBestPushByMatrixSolver(pushes, deadlineTimeNanos)
+        selectPivotSolver(pushes, deadlineTimeNanos)
     }
+}
+
+private fun selectPivotSolver(pushes: List<PushAndMove>, deadlineTimeNanos: Long): OnePush {
+    fun score(push: PushAndMove): Int {
+        return (itemsCountDiff(push) * 100 + pushOutItems(push)) * 100 + space(push)
+    }
+
+    val SHIFT = 4 * 100 * 100 * 1.0
+
+
+    val SIZE = 28
+    val a = Array<DoubleArray>(SIZE) { DoubleArray(SIZE) { 0.0 } } // interior[column][row]
+    for (push in pushes) {
+        val score = score(push)
+        a[push.pushes.enemyPush.idx][push.pushes.ourPush.idx] = score + SHIFT
+    }
+
+
+    val hLabel = IntArray(SIZE) { idx -> -idx - 1 } // y_i are represented by negative ints
+    val vLabel = IntArray(SIZE) { idx -> idx + 1 } // x_i are represented by  positives ints
+
+    val bottom = DoubleArray(SIZE) { idx -> -1.0 }
+    val right = DoubleArray(SIZE) { idx -> 1.0 }
+
+    var corner: Double = 0.0
+
+    while (bottom.any { it < 0 } /*step #6*/) {
+        var p = -1
+        var q = -1
+
+        run { // step #3
+            for (i in (0 until SIZE)) {
+                if (bottom[i] < 0) {
+                    var min_3c = Double.MAX_VALUE
+                    for (j in (0 until SIZE)) {
+                        if (a[i][j] > 0) {
+                            val val_3c = right[j] / a[i][j]
+                            if (val_3c < min_3c) {
+                                min_3c = val_3c
+                                p = i
+                                q = j
+                            }
+                        }
+                    }
+                    if (p >= 0) {
+                        break
+                    }
+                }
+            }
+
+        }
+
+        if (p < 0) {
+            break
+        }
+
+        run { // step #4
+            val pivot = a[p][q]
+
+            corner = corner - bottom[p] * right[q] / pivot
+
+            for (i in (0 until SIZE)) {
+                if (i != p) {
+                    bottom[i] = bottom[i] - bottom[p] * a[i][q] / pivot
+                }
+            }
+            bottom[p] = -bottom[p] / pivot
+
+            for (j in (0 until SIZE)) {
+                if (j != q) {
+                    right[j] = right[j] - a[p][j] * right[q] / pivot
+                }
+            }
+            right[q] = right[q] / pivot
+
+            for (i in (0 until SIZE)) {
+                for (j in (0 until SIZE)) {
+                    if (i != p && j != q) {
+                        a[i][j] = a[i][j] - a[p][j] * a[i][q] / pivot
+                    }
+                }
+            }
+            for (i in (0 until SIZE)) {
+                for (j in (0 until SIZE)) {
+                    if (i != p && j == q) {
+                        a[i][j] = a[i][j] / pivot
+                    } else if (i == p && j != q) {
+                        a[i][j] = -a[i][j] / pivot
+                    } else if (i == p && j == q) {
+                        a[i][j] = 1 / a[i][j]
+                    }
+                }
+            }
+        }
+
+        run { // step #5
+            val tmp = hLabel[p]
+            hLabel[p] = vLabel[q]
+            vLabel[q] = tmp
+        }
+    }
+
+    //step 7
+    val resultScore = 1 / corner - SHIFT
+
+    log("resultScore = $resultScore")
+
+    val ourStrategy = DoubleArray(SIZE) { 0.0 }
+    val enemyStrategy = DoubleArray(SIZE) { 0.0 }
+
+    for (i in (0 until SIZE)) {
+        if (hLabel[i] > 0) {
+            val idx = hLabel[i] - 1
+            ourStrategy[idx] = bottom[i] / corner
+        }
+    }
+    for (j in (0 until SIZE)) {
+        if (vLabel[j] < 0) {
+            val idx = -vLabel[j] - 1
+            enemyStrategy[idx] = right[j] / corner
+        }
+    }
+
+    val selection = rand.nextDouble()
+
+    log("OurStrategy: ${ourStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to score }
+        .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
+    log("EnemyStrategy: ${enemyStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to score }
+        .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
+
+    var currentSum = 0.0
+    for (idx in (0 until SIZE)) {
+        currentSum += ourStrategy[idx]
+        if (currentSum >= selection) {
+            return OnePush.byIdx(idx)
+        }
+    }
+
+    throw IllegalStateException("aaaaa")
+
 }
 
 private fun selectBestPushByMatrixSolver(pushes: List<PushAndMove>, deadlineTimeNanos: Long): OnePush {
@@ -550,7 +690,12 @@ private fun selectBestPushByMatrixSolver(pushes: List<PushAndMove>, deadlineTime
 
     ourStrategy[maxOurMove] = 1
 
-    while (deadlineTimeNanos > System.nanoTime()) {
+    var i = 0
+    while (true) {
+        i++
+        if (deadlineTimeNanos > System.nanoTime()) {
+            break
+        }
         run {
             var minEnemyScore = Integer.MAX_VALUE
             var minEnemyMove = -1
@@ -581,6 +726,13 @@ private fun selectBestPushByMatrixSolver(pushes: List<PushAndMove>, deadlineTime
                 }
             }
             ourStrategy[maxOurMove] += 1
+        }
+        if (i % 10_000 == 0) {
+
+            val ourSum = ourStrategy.sum()
+            log("OurStrategy for iteration $i: ${ourStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to (score * 1.0 / ourSum) }
+                .sortedByDescending { it.second }
+                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
         }
     }
 
@@ -1466,7 +1618,7 @@ object Warmup {
             toPush.gameBoard,
             toPush.ourQuests,
             toPush.enemyQuests,
-            step = -2 // small limit
+            step = 0 // big limit
         )
         lastBoard = toPush.gameBoard
         log("warmup once move")
