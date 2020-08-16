@@ -525,8 +525,31 @@ private fun findBestPush(
 }
 
 private fun selectPivotSolver(pushes: List<PushAndMove>, deadlineTimeNanos: Long): OnePush {
-    fun score(push: PushAndMove): Int {
-        return (itemsCountDiff(push) * 100 + pushOutItems(push)) * 100 + space(push)
+    fun score(push: PushAndMove): Double {
+        val ourItemRemain = push.ourPlayer.numPlayerCards - push.ourQuestCompleted
+        val enemyItemRemain = push.enemyPlayer.numPlayerCards - push.enemyQuestCompleted
+        if (ourItemRemain == 0) {
+            if (enemyItemRemain == 0) {
+                return 0.5
+            } else {
+                return 1.0
+            }
+        } else if (enemyItemRemain == 0) {
+            return 0.0
+        }
+        val bothItems = enemyItemRemain + ourItemRemain
+        val probabilityToWin = enemyItemRemain.toDouble() / bothItems
+
+        val secondaryScore = pushOutItems(push) * 100 + space(push)
+        if (secondaryScore > 0) {
+            val delta = enemyItemRemain.toDouble() / (bothItems * (bothItems - 1))
+            return probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
+        } else if (secondaryScore < 0) {
+            val delta = ourItemRemain.toDouble() / (bothItems * (bothItems - 1))
+            return probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
+        } else {
+            return probabilityToWin
+        }
     }
 
     val SHIFT = 4 * 100 * 100 * 1.0
@@ -1000,7 +1023,7 @@ fun <U : Comparable<U>> caching(funct: (pushesAndMoves: List<PushAndMove>) -> Co
 
 object PushSelectors {
     fun itemsCountDiff(push: PushAndMove): Int {
-        return (push.ourQuestCompleted * 100.0 / push.ourPlayer.numPlayerCards - push.enemyQuestCompleted * 100.0 / push.enemyPlayer.numPlayerCards).toInt()
+        return (push.ourQuestCompleted - push.enemyQuestCompleted)
     }
 
     private val itemCountDiff = { pushesAndMoves: List<PushAndMove> ->
