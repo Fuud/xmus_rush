@@ -10,7 +10,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.StringReader
-import java.lang.IllegalStateException
 import java.lang.management.GarbageCollectorMXBean
 import java.lang.management.ManagementFactory
 import java.text.DecimalFormat
@@ -666,14 +665,37 @@ private fun selectPivotSolver(pushes: List<PushAndMove>, deadlineTimeNanos: Long
 }
 
 private fun selectBestPushByMatrixSolver(pushes: List<PushAndMove>, deadlineTimeNanos: Long): OnePush {
-    fun score(push: PushAndMove): Int {
-        return (itemsCountDiff(push) * 100 + pushOutItems(push)) * 100 + space(push)
+    fun score(push: PushAndMove): Double {
+        val ourItemRemain = push.ourPlayer.numPlayerCards - push.ourQuestCompleted
+        val enemyItemRemain = push.enemyPlayer.numPlayerCards - push.enemyQuestCompleted
+        if (ourItemRemain == 0) {
+            if (enemyItemRemain == 0) {
+                return 0.5
+            } else {
+                return 1.0
+            }
+        } else if (enemyItemRemain == 0) {
+            return 0.0
+        }
+        val bothItems = enemyItemRemain + ourItemRemain
+        val probabilityToWin = enemyItemRemain.toDouble() / bothItems
+
+        val secondaryScore = pushOutItems(push) * 100 + space(push)
+        if (secondaryScore > 0) {
+            val delta = enemyItemRemain.toDouble() / (bothItems * (bothItems - 1))
+            return probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
+        } else if (secondaryScore < 0) {
+            val delta = ourItemRemain.toDouble() / (bothItems * (bothItems - 1))
+            return probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
+        } else {
+            return probabilityToWin
+        }
     }
 
-    val byOurPush = Array<IntArray>(28) { IntArray(28) { 0 } }
-    val byEnemyPush = Array<IntArray>(28) { IntArray(28) { 0 } }
+    val byOurPush = Array(28) { DoubleArray(28) { 0.0 } }
+    val byEnemyPush = Array(28) { DoubleArray(28) { 0.0 } }
 
-    var maxScore = Integer.MIN_VALUE
+    var maxScore = Double.MIN_VALUE
     var maxOurMove = -1
     for (push in pushes) {
         val score = score(push)
@@ -697,11 +719,11 @@ private fun selectBestPushByMatrixSolver(pushes: List<PushAndMove>, deadlineTime
             break
         }
         run {
-            var minEnemyScore = Integer.MAX_VALUE
+            var minEnemyScore = Double.MAX_VALUE
             var minEnemyMove = -1
 
             for (enemyMove in (0..27)) {
-                var score = 0
+                var score = 0.0
                 for (ourMove in (0..27)) {
                     score += byEnemyPush[enemyMove][ourMove] * ourStrategy[ourMove]
                 }
@@ -713,10 +735,10 @@ private fun selectBestPushByMatrixSolver(pushes: List<PushAndMove>, deadlineTime
             enemyStrategy[minEnemyMove] += 1
         }
         run {
-            var maxOurScore = Integer.MIN_VALUE
+            var maxOurScore = Double.MIN_VALUE
             var maxOurMove = -1
             for (ourMove in (0..27)) {
-                var score = 0
+                var score = 0.0
                 for (enemyMove in (0..27)) {
                     score += byOurPush[ourMove][enemyMove] * enemyStrategy[enemyMove]
                 }
@@ -1013,6 +1035,7 @@ object PushSelectors {
             }
 
         var otherItemsScore = 0
+        //todo 3 queries are better than 49 ones
         for (y in (0..6)) {
             for (x in (0..6)) {
                 if (push.board.get(y, x).holdOurQuestItem(playerId, quests)) {
