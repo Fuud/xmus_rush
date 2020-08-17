@@ -517,14 +517,18 @@ private fun findBestPush(
         timeLimitNanos = timeLimitNanos
     )
 
-    return if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(20)) {
+    return if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(10)) {
         selectBestPushByTwoComparators(pushes)
     } else {
-        selectPivotSolver(pushes, deadlineTimeNanos)
+        selectPivotSolver(pushes)
     }
 }
 
-private fun selectPivotSolver(pushes: List<PushAndMove>, deadlineTimeNanos: Long): OnePush {
+val SIZE = 28
+val a = Array<DoubleArray>(SIZE) { DoubleArray(SIZE) { 0.0 } } // interior[column][row]
+//pivot method from https://www.math.ucla.edu/~tom/Game_Theory/mat.pdf
+private fun selectPivotSolver(pushes: List<PushAndMove>): OnePush {
+    log("pivotSolver")
     fun score(push: PushAndMove): Double {
         val ourItemRemain = push.ourPlayer.numPlayerCards - push.ourQuestCompleted
         val enemyItemRemain = push.enemyPlayer.numPlayerCards - push.enemyQuestCompleted
@@ -552,16 +556,11 @@ private fun selectPivotSolver(pushes: List<PushAndMove>, deadlineTimeNanos: Long
         }
     }
 
-    val SHIFT = 4 * 100 * 100 * 1.0
-
-
-    val SIZE = 28
-    val a = Array<DoubleArray>(SIZE) { DoubleArray(SIZE) { 0.0 } } // interior[column][row]
+    val SHIFT = 4 * 100 * 100.0
     for (push in pushes) {
         val score = score(push)
         a[push.pushes.enemyPush.idx][push.pushes.ourPush.idx] = score + SHIFT
     }
-
 
     val hLabel = IntArray(SIZE) { idx -> -idx - 1 } // y_i are represented by negative ints
     val vLabel = IntArray(SIZE) { idx -> idx + 1 } // x_i are represented by  positives ints
@@ -570,17 +569,18 @@ private fun selectPivotSolver(pushes: List<PushAndMove>, deadlineTimeNanos: Long
     val right = DoubleArray(SIZE) { idx -> 1.0 }
 
     var corner: Double = 0.0
+    val duration = measureNanoTime {
+        while (bottom.any { it < 0 } /*step #6*/) {
+            var p = -1
+            var q = -1
 
-    while (bottom.any { it < 0 } /*step #6*/) {
-        var p = -1
-        var q = -1
-
-        run { // step #3
-            for (i in (0 until SIZE)) {
-                if (bottom[i] < 0) {
-                    var min_3c = Double.MAX_VALUE
-                    for (j in (0 until SIZE)) {
-                        if (a[i][j] > 0) {
+            run {
+                // step #3
+                for (i in (0 until SIZE)) {
+                    if (bottom[i] < 0) {
+                        var min_3c = Double.MAX_VALUE
+                        for (j in (0 until SIZE)) {
+                            if (a[i][j] > 0) {
                             val val_3c = right[j] / a[i][j]
                             if (val_3c < min_3c) {
                                 min_3c = val_3c
@@ -598,6 +598,7 @@ private fun selectPivotSolver(pushes: List<PushAndMove>, deadlineTimeNanos: Long
         }
 
         if (p < 0) {
+            log("!!!Can not find pivot!!!")
             break
         }
 
@@ -640,17 +641,19 @@ private fun selectPivotSolver(pushes: List<PushAndMove>, deadlineTimeNanos: Long
             }
         }
 
-        run { // step #5
-            val tmp = hLabel[p]
-            hLabel[p] = vLabel[q]
-            vLabel[q] = tmp
+            run {
+                // step #5
+                val tmp = hLabel[p]
+                hLabel[p] = vLabel[q]
+                vLabel[q] = tmp
+            }
         }
     }
 
     //step 7
     val resultScore = 1 / corner - SHIFT
 
-    log("resultScore = $resultScore")
+    log("resultScore = $resultScore, duration = ${TimeUnit.NANOSECONDS.toMillis(duration)}")
 
     val ourStrategy = DoubleArray(SIZE) { 0.0 }
     val enemyStrategy = DoubleArray(SIZE) { 0.0 }
@@ -804,6 +807,7 @@ private fun selectBestPushByMatrixSolver(pushes: List<PushAndMove>, deadlineTime
 }
 
 private fun selectBestPushByTwoComparators(pushes: List<PushAndMove>): OnePush {
+    log("twoComparators")
     val comparator =
         caching(PushSelectors.itemsCountDiffMin)
             .thenComparing(caching(PushSelectors.itemsCountDiffAvg))
