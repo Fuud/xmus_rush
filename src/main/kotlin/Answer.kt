@@ -98,7 +98,7 @@ val moveScores = Point.points.flatten()
 
 var lastBoard: GameBoard? = null
 var lastPush: OnePush? = null
-var wasDrawAtPrevMove = false
+var numberOfDraws = 0
 
 fun performGame() {
     setupMonitoring()
@@ -132,7 +132,7 @@ fun performGame() {
                 val duration = measureNanoTime {
                     val prevMovesAtThisPosition = allBoards[gameBoard]
 
-                    log("prevDraw=$wasDrawAtPrevMove duplicate=${prevMovesAtThisPosition != null}")
+                    log("consecutiveDraws=$numberOfDraws duplicate=${prevMovesAtThisPosition != null}")
 
                     val bestMove = findBestPush(
                         we,
@@ -141,7 +141,8 @@ fun performGame() {
                         ourQuests,
                         enemyQuests,
                         step,
-                        prevMovesAtThisPosition
+                        prevMovesAtThisPosition,
+                        numberOfDraws
                     )
 
                     lastBoard = gameBoard
@@ -218,7 +219,12 @@ private fun findBestMove(
     val startTime = System.nanoTime()
     val lastPush = lastPush!!
     val lastBoard = lastBoard!!
-    wasDrawAtPrevMove = lastBoard == gameBoard
+    val wasDrawAtPrevMove = lastBoard == gameBoard
+    if (wasDrawAtPrevMove) {
+        numberOfDraws++
+    } else {
+        numberOfDraws = 0
+    }
     if (!wasDrawAtPrevMove) {
         val enemyLastPush = tryFindEnemyPush(lastBoard, gameBoard, lastPush)
         if (enemyLastPush != null) {
@@ -435,6 +441,10 @@ data class Pushes(val ourPush: OnePush, val enemyPush: OnePush) {
                     }
             }.shuffled(rand)
     }
+
+    fun collision(): Boolean {
+        return ourPush.idx == enemyPush.idx && (ourPush.direction.isVertical == enemyPush.direction.isVertical)
+    }
 }
 
 data class PushAndMove(
@@ -459,21 +469,10 @@ data class PushAndMove(
     val ourFieldOnHand = board.ourField
     val enemyFieldOnHand = board.enemyField
 
-//    val ourPaths: List<PathElem> = board.findPaths(ourPlayer, ourQuests)
-//    val enemyPaths: List<PathElem> = board.findPaths(enemyPlayer, enemyQuests)
-//    val enemySpace = enemyPaths.groupBy { it.point }.size
-//    val ourSpace = ourPaths.groupBy { it.point }.size
-//    val enemyQuestCompleted = enemyPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
-//    val ourQuestCompleted = ourPaths.maxBy { it.itemsTaken.size }!!.itemsTaken.size
-
     val enemySpace = enemyDomain.size
     val ourSpace = ourDomain.size
     val enemyQuestCompleted = enemyDomain.getEnemyQuestsCount()
     val ourQuestCompleted = ourDomain.getOurQuestsCount()
-
-//    val estimate: Int = (ourQuestCompleted - enemyQuestCompleted + 3).shl(1)
-//        .or(if (ourFieldOnHand.item?.itemPlayerId ?: -1 == 0) 1 else 0).shl(7)
-//        .or(ourSpace - enemySpace + 47)
 }
 
 data class Action(val push: OnePush, val isEnemy: Boolean)
@@ -485,7 +484,8 @@ private fun findBestPush(
     ourQuests: List<String>,
     enemyQuests: List<String>,
     step: Int,
-    prevPushesAtThisPosition: List<Pushes>? = null
+    prevPushesAtThisPosition: List<Pushes>? = null,
+    numberOfDraws: Int = 0
 ): OnePush {
 
     val startTimeNanos = System.nanoTime()
@@ -520,40 +520,61 @@ private fun findBestPush(
     return if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(10)) {
         selectBestPushByTwoComparators(pushes)
     } else {
-        selectPivotSolver(pushes)
+        selectPivotSolver(pushes, numberOfDraws)
     }
 }
 
 val SIZE = 28
 val a = Array<DoubleArray>(SIZE) { DoubleArray(SIZE) { 0.0 } } // interior[column][row]
 //pivot method from https://www.math.ucla.edu/~tom/Game_Theory/mat.pdf
-private fun selectPivotSolver(pushes: List<PushAndMove>): OnePush {
+private fun selectPivotSolver(pushes: List<PushAndMove>, numberOfDraws: Int): OnePush {
     log("pivotSolver")
     fun score(push: PushAndMove): Double {
         val ourItemRemain = push.ourPlayer.numPlayerCards - push.ourQuestCompleted
         val enemyItemRemain = push.enemyPlayer.numPlayerCards - push.enemyQuestCompleted
         if (ourItemRemain == 0) {
             if (enemyItemRemain == 0) {
+                val enemyPushToLastQuest = push.enemyPlayer.numPlayerCards == 1 &&
+                        push.board.get(push.enemyPlayer.point).item?.itemPlayerId ?: -1 == 1
+                val ourPushToLastQuest = push.ourPlayer.numPlayerCards == 1 &&
+                        push.board.get(push.ourPlayer.point).item?.itemPlayerId ?: -1 == 1
+                if (enemyPushToLastQuest.xor(ourPushToLastQuest)) {
+                    if (enemyPushToLastQuest) {
+                        return 0.0
+                    } else {
+                        return 1.0
+                    }
+                }
                 return 0.5
             } else {
                 return 1.0
             }
-        } else if (enemyItemRemain == 0) {
+        }
+        if (enemyItemRemain == 0) {
             return 0.0
         }
         val bothItems = enemyItemRemain + ourItemRemain
         val probabilityToWin = enemyItemRemain.toDouble() / bothItems
 
         val secondaryScore = pushOutItems(push) * 100 + space(push)
-        if (secondaryScore > 0) {
+        val result = if (secondaryScore > 0) {
             val delta = enemyItemRemain.toDouble() / (bothItems * (bothItems - 1))
-            return probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
+            probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
         } else if (secondaryScore < 0) {
             val delta = ourItemRemain.toDouble() / (bothItems * (bothItems - 1))
-            return probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
+            probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
         } else {
-            return probabilityToWin
+            probabilityToWin
         }
+        if (numberOfDraws > 0 && push.pushes.collision()) {
+            if (enemyItemRemain < ourItemRemain) {
+                return Math.pow(result, numberOfDraws.toDouble() + 1)
+            } else if (enemyItemRemain == ourItemRemain && push.board.step < 50 && numberOfDraws > 1) {
+                return Math.pow(result, numberOfDraws.toDouble())
+            }
+        }
+
+        return result
     }
 
     val SHIFT = 4 * 100 * 100.0
