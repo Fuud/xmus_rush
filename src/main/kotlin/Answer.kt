@@ -520,15 +520,30 @@ private fun findBestPush(
     return if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(10)) {
         selectBestPushByTwoComparators(pushes)
     } else {
-        selectPivotSolver(pushes, numberOfDraws)
+        selectPivotSolver(pushes, numberOfDraws, prevPushesAtThisPosition)
     }
 }
 
-val SIZE = 28
-val a = Array<DoubleArray>(SIZE) { DoubleArray(SIZE) { 0.0 } } // interior[column][row]
+val a = Array<DoubleArray>(28) { DoubleArray(28) { 0.0 } } // interior[column][row]
+
 //pivot method from https://www.math.ucla.edu/~tom/Game_Theory/mat.pdf
-private fun selectPivotSolver(pushes: List<PushAndMove>, numberOfDraws: Int): OnePush {
+private fun selectPivotSolver(
+    pushes: List<PushAndMove>,
+    numberOfDraws: Int,
+    prevPushesAtThisPosition: List<Pushes>?
+): OnePush {
     log("pivotSolver")
+
+    log("prev pushes at this position: $prevPushesAtThisPosition")
+
+    val prevEnemyPushes = prevPushesAtThisPosition?.map { it.enemyPush }
+
+    val pushes = if (prevEnemyPushes == null) {
+        pushes
+    } else {
+        pushes.filter { it.pushes.enemyPush in prevEnemyPushes}
+    }
+
     fun score(push: PushAndMove): Double {
         val ourItemRemain = push.ourPlayer.numPlayerCards - push.ourQuestCompleted
         val enemyItemRemain = push.enemyPlayer.numPlayerCards - push.enemyQuestCompleted
@@ -577,17 +592,22 @@ private fun selectPivotSolver(pushes: List<PushAndMove>, numberOfDraws: Int): On
         return result
     }
 
-    val SHIFT = 0.0
+    val ourPushes = pushes.groupBy { it.pushes.ourPush }.keys.toList()
+    val OUR_SIZE = ourPushes.size
+    val enemyPushes = pushes.groupBy { it.pushes.enemyPush }.keys.toList()
+    val ENEMY_SIZE = enemyPushes.size
+
     for (push in pushes) {
         val score = score(push)
-        a[push.pushes.enemyPush.idx][push.pushes.ourPush.idx] = score + SHIFT
+        a[enemyPushes.indexOf(push.pushes.enemyPush)][ourPushes.indexOf(push.pushes.ourPush)] = score
     }
 
-    val hLabel = IntArray(SIZE) { idx -> -idx - 1 } // y_i are represented by negative ints
-    val vLabel = IntArray(SIZE) { idx -> idx + 1 } // x_i are represented by  positives ints
 
-    val bottom = DoubleArray(SIZE) { idx -> -1.0 }
-    val right = DoubleArray(SIZE) { idx -> 1.0 }
+    val hLabel = IntArray(ENEMY_SIZE) { idx -> -idx - 1 } // y_i are represented by negative ints
+    val vLabel = IntArray(OUR_SIZE) { idx -> idx + 1 } // x_i are represented by  positives ints
+
+    val bottom = DoubleArray(ENEMY_SIZE) { idx -> -1.0 }
+    val right = DoubleArray(OUR_SIZE) { idx -> 1.0 }
 
     var corner: Double = 0.0
     val duration = measureNanoTime {
@@ -597,70 +617,70 @@ private fun selectPivotSolver(pushes: List<PushAndMove>, numberOfDraws: Int): On
 
             run {
                 // step #3
-                for (i in (0 until SIZE)) {
+                for (i in (0 until ENEMY_SIZE)) {
                     if (bottom[i] < 0) {
                         var min_3c = Double.MAX_VALUE
-                        for (j in (0 until SIZE)) {
+                        for (j in (0 until OUR_SIZE)) {
                             if (a[i][j] > 0) {
-                            val val_3c = right[j] / a[i][j]
-                            if (val_3c < min_3c) {
-                                min_3c = val_3c
-                                p = i
-                                q = j
+                                val val_3c = right[j] / a[i][j]
+                                if (val_3c < min_3c) {
+                                    min_3c = val_3c
+                                    p = i
+                                    q = j
+                                }
                             }
                         }
-                    }
-                    if (p >= 0) {
-                        break
-                    }
-                }
-            }
-
-        }
-
-        if (p < 0) {
-            log("!!!Can not find pivot!!!")
-            break
-        }
-
-        run { // step #4
-            val pivot = a[p][q]
-
-            corner = corner - bottom[p] * right[q] / pivot
-
-            for (i in (0 until SIZE)) {
-                if (i != p) {
-                    bottom[i] = bottom[i] - bottom[p] * a[i][q] / pivot
-                }
-            }
-            bottom[p] = -bottom[p] / pivot
-
-            for (j in (0 until SIZE)) {
-                if (j != q) {
-                    right[j] = right[j] - a[p][j] * right[q] / pivot
-                }
-            }
-            right[q] = right[q] / pivot
-
-            for (i in (0 until SIZE)) {
-                for (j in (0 until SIZE)) {
-                    if (i != p && j != q) {
-                        a[i][j] = a[i][j] - a[p][j] * a[i][q] / pivot
+                        if (p >= 0) {
+                            break
+                        }
                     }
                 }
+
             }
-            for (i in (0 until SIZE)) {
-                for (j in (0 until SIZE)) {
-                    if (i != p && j == q) {
-                        a[i][j] = a[i][j] / pivot
-                    } else if (i == p && j != q) {
-                        a[i][j] = -a[i][j] / pivot
-                    } else if (i == p && j == q) {
-                        a[i][j] = 1 / a[i][j]
+
+            if (p < 0) {
+                log("!!!Can not find pivot!!!")
+                break
+            }
+
+            run { // step #4
+                val pivot = a[p][q]
+
+                corner = corner - bottom[p] * right[q] / pivot
+
+                for (i in (0 until ENEMY_SIZE)) {
+                    if (i != p) {
+                        bottom[i] = bottom[i] - bottom[p] * a[i][q] / pivot
+                    }
+                }
+                bottom[p] = -bottom[p] / pivot
+
+                for (j in (0 until OUR_SIZE)) {
+                    if (j != q) {
+                        right[j] = right[j] - a[p][j] * right[q] / pivot
+                    }
+                }
+                right[q] = right[q] / pivot
+
+                for (i in (0 until ENEMY_SIZE)) {
+                    for (j in (0 until OUR_SIZE)) {
+                        if (i != p && j != q) {
+                            a[i][j] = a[i][j] - a[p][j] * a[i][q] / pivot
+                        }
+                    }
+                }
+                for (i in (0 until ENEMY_SIZE)) {
+                    for (j in (0 until OUR_SIZE)) {
+                        if (i != p && j == q) {
+                            a[i][j] = a[i][j] / pivot
+                        } else if (i == p && j != q) {
+                            a[i][j] = -a[i][j] / pivot
+                        } else if (i == p && j == q) {
+                            a[i][j] = 1 / a[i][j]
+                        }
                     }
                 }
             }
-        }
 
             run {
                 // step #5
@@ -672,20 +692,20 @@ private fun selectPivotSolver(pushes: List<PushAndMove>, numberOfDraws: Int): On
     }
 
     //step 7
-    val resultScore = 1 / corner - SHIFT
+    val resultScore = 1 / corner
 
     log("resultScore = $resultScore, duration = ${TimeUnit.NANOSECONDS.toMillis(duration)}")
 
-    val ourStrategy = DoubleArray(SIZE) { 0.0 }
-    val enemyStrategy = DoubleArray(SIZE) { 0.0 }
+    val ourStrategy = DoubleArray(OUR_SIZE) { 0.0 }
+    val enemyStrategy = DoubleArray(ENEMY_SIZE) { 0.0 }
 
-    for (i in (0 until SIZE)) {
+    for (i in (0 until ENEMY_SIZE)) {
         if (hLabel[i] > 0) {
             val idx = hLabel[i] - 1
             ourStrategy[idx] = bottom[i] / corner
         }
     }
-    for (j in (0 until SIZE)) {
+    for (j in (0 until OUR_SIZE)) {
         if (vLabel[j] < 0) {
             val idx = -vLabel[j] - 1
             enemyStrategy[idx] = right[j] / corner
@@ -694,18 +714,18 @@ private fun selectPivotSolver(pushes: List<PushAndMove>, numberOfDraws: Int): On
 
     val selection = rand.nextDouble()
 
-    log("OurStrategy: ${ourStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to score }
+    log("OurStrategy: ${ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
         .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
-    log("EnemyStrategy: ${enemyStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to score }
+    log("EnemyStrategy: ${enemyStrategy.mapIndexed { idx, score -> enemyPushes[idx] to score }
         .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
 
     log("selection=$selection ourSum=${ourStrategy.sum()} enemySum=${enemyStrategy.sum()}")
 
     var currentSum = 0.0
-    for (idx in (0 until SIZE)) {
+    for (idx in (0 until OUR_SIZE)) {
         currentSum += ourStrategy[idx]
         if (currentSum >= selection) {
-            return OnePush.byIdx(idx)
+            return ourPushes[idx]
         }
     }
 
