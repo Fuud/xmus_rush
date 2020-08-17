@@ -577,7 +577,7 @@ private fun selectPivotSolver(pushes: List<PushAndMove>, numberOfDraws: Int): On
         return result
     }
 
-    val SHIFT = 4 * 100 * 100.0
+    val SHIFT = 0.0
     for (push in pushes) {
         val score = score(push)
         a[push.pushes.enemyPush.idx][push.pushes.ourPush.idx] = score + SHIFT
@@ -698,6 +698,8 @@ private fun selectPivotSolver(pushes: List<PushAndMove>, numberOfDraws: Int): On
         .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
     log("EnemyStrategy: ${enemyStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to score }
         .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
+
+    log("selection=$selection ourSum=${ourStrategy.sum()} enemySum=${enemyStrategy.sum()}")
 
     var currentSum = 0.0
     for (idx in (0 until SIZE)) {
