@@ -1,4 +1,10 @@
+import Replay.downloadReplay
+import Replay.listLastBattles
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import io.ktor.client.HttpClient
@@ -12,10 +18,35 @@ import io.ktor.http.contentType
 import kotlinx.coroutines.runBlocking
 import java.io.File
 
+val ymlMapper = ObjectMapper(YAMLFactory().apply {
+    this.enable(YAMLGenerator.Feature.LITERAL_BLOCK_STYLE)
+}).apply {
+    this.registerModule(KotlinModule())
+    this.writerWithDefaultPrettyPrinter()
+}
 object Replay {
+    val userId = 3871137
+    val login = "fuudtorrentsru@gmail.com"
+    val password = System.getProperty("password")!!
+
+    val httpClient = HttpClient(Apache) {
+        install(HttpCookies)
+
+        install(JsonFeature) {
+            serializer = JacksonSerializer()
+        }
+    }.apply {
+        runBlocking {
+            this@apply.post<kotlin.Unit>("https://www.codingame.com/services/CodingamerRemoteService/loginSiteV2") {
+                body = kotlin.collections.listOf(login, password, true)
+                contentType(io.ktor.http.ContentType.Application.Json)
+            }
+        }
+    }
+
     @JvmStatic
     fun main(args: Array<String>) {
-        val replayId = "482329698"
+        val replayId = "482340711"
 
         val replayFile = File("replays/$replayId.txt")
 
@@ -23,53 +54,50 @@ object Replay {
             replayFile.readText()
         } else {
             val replayText = downloadReplay(replayId)
-            replayFile.parentFile.mkdirs()
-            replayFile.writeText(replayText)
             replayText
         }
 
-        while (true){
+        while (true) {
             try {
                 System.setIn(input.byteInputStream())
                 performGame()
-            }catch (t: Throwable){}
+            } catch (t: Throwable) {
+            }
         }
 
     }
 
-    private fun downloadReplay(replayId: String): String {
-        val userId = 3871137
-        val login = "fuudtorrentsru@gmail.com"
-        val password = System.getProperty("password")!!
-
-        val httpClient = HttpClient(Apache) {
-            install(HttpCookies)
-
-            install(JsonFeature) {
-                serializer = JacksonSerializer()
-            }
-        }
-
-        val input = runBlocking {
-            // auth
-            httpClient.post<Unit>("https://www.codingame.com/services/CodingamerRemoteService/loginSiteV2") {
-                body = listOf(login, password, true)
-                contentType(ContentType.Application.Json)
-            }
+    fun downloadReplay(replayId: String): String {
+        return runBlocking {
             //get replay
             val gameInfo = httpClient.post<Game>("https://www.codingame.com/services/gameResult/findByGameId") {
-                body = listOf(replayId, userId)
+                body = listOf<Any>(replayId, userId)
                 contentType(ContentType.Application.Json)
             }
 
             val stdError = gameInfoToInput(gameInfo)
             File("replays/$replayId.raw.txt").apply {
-                this.parentFile.mkdirs()
-                this.writeText(stdError)
+                parentFile.mkdirs()
+                writeText(stdError)
             }
-            return@runBlocking stdError.lineSequence().filterNot { it.startsWith("#") }.joinToString(separator = "\n")
+            ymlMapper.writeValue(File("replays/$replayId.yml"), gameInfo)
+            val filtered = stdError.lineSequence().filterNot { it.startsWith("#") }.joinToString(separator = "\n")
+            File("replays/$replayId.txt").writeText(filtered)
+            return@runBlocking filtered
         }
-        return input
+    }
+
+    fun listLastBattles(sessionHandle: String): List<String> {
+        return runBlocking {
+            //get replay
+            val gameInfo =
+                httpClient.post<List<GameInfo>>("https://www.codingame.com/services/gamesPlayersRanking/findLastBattlesByTestSessionHandle") {
+                    body = listOf(sessionHandle, null)
+                    contentType(ContentType.Application.Json)
+                }
+
+            gameInfo.map { it.gameId }
+        }
     }
 }
 
@@ -87,14 +115,21 @@ data class Frame(
     val stdout: String? = null,
     val stderr: String? = null,
     val summary: String? = null,
-    val view: String? = null,
+//    val view: String? = null,
     val keyframe: String? = null,
     val agentId: String? = null
-)
+){
+
+}
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class Game(
     val frames: List<Frame>
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class GameInfo(
+    val gameId: String
 )
 
 object Transformer {
@@ -109,5 +144,15 @@ object Transformer {
                 jacksonObjectMapper().readValue<Game>(from)
             )
         )
+    }
+}
+
+object Test {
+    @JvmStatic
+    fun main(args: Array<String>) {
+        val games = listLastBattles("295709813627112ed42900bdc3f5ff26792c2c1b")
+        games.forEach {
+            downloadReplay(it)
+        }
     }
 }
