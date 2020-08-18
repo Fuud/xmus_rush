@@ -34,6 +34,16 @@ fun main() {
     performGame()
 }
 
+enum class EnemyType {
+    UNKNOWN,
+
+    STABLE,
+
+    UNSTABLE
+}
+
+var enemyType = EnemyType.UNKNOWN
+
 private fun initProbabilities() {
     val p00 = 0.611
     val p01 = 0.151
@@ -177,7 +187,7 @@ fun performGame() {
 
         // game loop
 
-        val allBoards = mutableMapOf<GameBoard, MutableList<Pushes>>()
+        val allBoards = mutableMapOf<GameBoard, MutableSet<Pushes>>()
 
         repeat(150) { step ->
             val start = System.nanoTime()
@@ -268,7 +278,7 @@ fun performGame() {
 
 private fun findBestMove(
     gameBoard: GameBoard,
-    allBoards: MutableMap<GameBoard, MutableList<Pushes>>,
+    allBoards: MutableMap<GameBoard, MutableSet<Pushes>>,
     we: Player,
     ourQuests: List<String>,
     step: Int,
@@ -288,23 +298,39 @@ private fun findBestMove(
     if (!wasDrawAtPrevMove) {
         val enemyLastPush = tryFindEnemyPush(lastBoard, gameBoard, lastPush)
         if (enemyLastPush != null) {
-            //todo we lost possible history of draws
-            allBoards[lastBoard] = mutableListOf(Pushes(lastPush, enemyLastPush))
+            //todo add elves position to gameBoard
+            allBoards.putIfAbsent(lastBoard, mutableSetOf())
+            val enemyMovesInThisPosBeforeLastMove = allBoards[lastBoard]!!.map { it.enemyPush }
+            allBoards[lastBoard]!!.add(Pushes(lastPush, enemyLastPush))
+            if (enemyType == EnemyType.UNKNOWN || enemyType == EnemyType.STABLE) {
+                if (enemyMovesInThisPosBeforeLastMove.isEmpty()) {
+                    // do nothing
+                } else if (enemyLastPush in enemyMovesInThisPosBeforeLastMove) {
+                    enemyType = EnemyType.STABLE
+                } else {
+                    enemyType = EnemyType.UNSTABLE
+                }
+            }
         }
     } else {
-        val previousPushes = allBoards[lastBoard]
-        if (previousPushes == null) {
-            allBoards[lastBoard] = mutableListOf(
-                Pushes(lastPush, lastPush),
-                Pushes(lastPush, lastPush.copy(direction = lastPush.direction.opposite))
-            )
-        } else if (previousPushes.none { it.ourPush == lastPush }) {
+        allBoards.putIfAbsent(lastBoard, mutableSetOf())
+        val enemyMovesInThisPosBeforeLastMove = allBoards[lastBoard]!!.map { it.enemyPush }
+        val previousPushes = allBoards[lastBoard]!!
+        if (previousPushes.none { it.ourPush == lastPush }) {
             previousPushes.add(Pushes(lastPush, lastPush))
             previousPushes.add(
                 Pushes(lastPush, lastPush.copy(direction = lastPush.direction.opposite))
             )
         }
+        if (enemyType == EnemyType.UNKNOWN || enemyType == EnemyType.STABLE) {
+            if (enemyMovesInThisPosBeforeLastMove.isNotEmpty() && previousPushes.size == 2) {
+                enemyType = EnemyType.STABLE
+            } else {
+                enemyType = EnemyType.UNSTABLE
+            }
+        }
     }
+
 
     val paths = gameBoard.findPaths(we, ourQuests)
     //todo there are rare mazes where we can complete any two quests from three
@@ -544,7 +570,7 @@ private fun findBestPush(
     ourQuests: List<String>,
     enemyQuests: List<String>,
     step: Int,
-    prevPushesAtThisPosition: List<Pushes>? = null,
+    prevPushesAtThisPosition: Set<Pushes>? = null,
     numberOfDraws: Int = 0
 ): OnePush {
 
@@ -580,7 +606,7 @@ private fun findBestPush(
     return if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(10)) {
         selectBestPushByTwoComparators(pushes)
     } else {
-        selectPivotSolver(pushes, numberOfDraws, (150 - gameBoard.step) / 2 - 1, prevPushesAtThisPosition)
+        selectPivotSolver(we, enemy, gameBoard, pushes, numberOfDraws, prevPushesAtThisPosition)
     }
 }
 
@@ -589,19 +615,43 @@ val stringBuilder = StringBuilder(10_000)
 
 //pivot method from https://www.math.ucla.edu/~tom/Game_Theory/mat.pdf
 private fun selectPivotSolver(
+    we: Player,
+    enemy: Player,
+    gameBoard: GameBoard,
     pushes: List<PushAndMove>,
     numberOfDraws: Int,
-    pushRemain: Int,
-    prevPushesAtThisPosition: List<Pushes>?
+    prevPushesAtThisPosition: Set<Pushes>?
 ): OnePush {
     log("pivotSolver: prev pushes at this position: $prevPushesAtThisPosition")
 
+    val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
+            || (we.numPlayerCards == enemy.numPlayerCards && gameBoard.step < 50))
+
+    val pushRemain = (150 - gameBoard.step) / 2 - 1
     val prevEnemyPushes = prevPushesAtThisPosition?.map { it.enemyPush }
+    val prevOurPushes = prevPushesAtThisPosition?.map { it.ourPush }
 
     val pushes = if (prevEnemyPushes == null) {
         pushes
     } else {
-        pushes.filter { it.pushes.enemyPush in prevEnemyPushes }
+        prevEnemyPushes!!
+        prevOurPushes!!
+        if (enemyType == EnemyType.UNSTABLE) {
+            if (weLoseOrDrawAtEarlyGame && numberOfDraws > 2) {
+                log("filter out our pushes: $prevOurPushes")
+                pushes.filter { it.pushes.ourPush !in prevOurPushes }
+            } else {
+                pushes
+            }
+        } else {
+            if (enemyType == EnemyType.STABLE && weLoseOrDrawAtEarlyGame) {
+                log("filter out our pushes: $prevOurPushes and enemy pushes: $prevEnemyPushes")
+                pushes.filter { it.pushes.enemyPush in prevEnemyPushes && it.pushes.ourPush !in prevOurPushes }
+            } else {
+                log("filter out enemy pushes: $prevEnemyPushes")
+                pushes.filter { it.pushes.enemyPush in prevEnemyPushes }
+            }
+        }
     }
 
     fun score(push: PushAndMove): Double {
@@ -675,12 +725,12 @@ private fun selectPivotSolver(
     stringBuilder.append("\n#our\\enemy | ")
     enemyPushes.joinTo(stringBuilder, " | ")
     stringBuilder.append("\n")
-    for (j in (0 until OUR_SIZE)){
+    for (j in (0 until OUR_SIZE)) {
         stringBuilder.append("#       ")
         stringBuilder.append(ourPushes[j])
         stringBuilder.append(" | ")
-        for (i in (0 until ENEMY_SIZE)){
-            stringBuilder.append((100*a[i][j]).toInt())
+        for (i in (0 until ENEMY_SIZE)) {
+            stringBuilder.append((100 * a[i][j]).toInt())
             stringBuilder.append(" | ")
         }
         stringBuilder.append("\n")
@@ -1009,12 +1059,12 @@ class PushResultTable(pushes: List<PushAndMove>) {
     override fun toString(): String {
         val header =
             "our\\enemy |  " + Direction.allDirections.flatMap { dir ->
-                (0..6).map { rc ->
-                    "${dir.name.padStart(
-                        5
-                    )}$rc"
+                    (0..6).map { rc ->
+                        "${dir.name.padStart(
+                            5
+                        )}$rc"
+                    }
                 }
-            }
                 .joinToString(separator = "    | ")
         val rows = Direction.allDirections.flatMap { dir ->
             (0..6).map { rc ->
