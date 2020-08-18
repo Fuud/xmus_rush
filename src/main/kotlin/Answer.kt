@@ -10,7 +10,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.StringReader
-import java.lang.StringBuilder
 import java.lang.management.GarbageCollectorMXBean
 import java.lang.management.ManagementFactory
 import java.text.DecimalFormat
@@ -27,8 +26,68 @@ import kotlin.system.measureNanoTime
 /**
  * Help the Christmas elves fetch presents in a magical labyrinth!
  **/
+val winP = Array(75) { Array(13) { DoubleArray(13) } }
+val loseP = Array(75) { Array(13) { DoubleArray(13) } }
+val drawP = Array(75) { Array(13) { DoubleArray(13) } }
+
 fun main() {
     performGame()
+}
+
+private fun initProbabilities() {
+    val p00 = 0.611
+    val p01 = 0.151
+    val p02 = 0.018
+    val p10 = 0.151
+    val p11 = 0.040
+    val p12 = 0.05
+    val p20 = 0.018
+    val p21 = 0.05
+    val p22 = 0.01
+    val oe = doubleArrayOf(p00, p01, p02, p10, p11, p12, p20, p21, p22)
+    val duration = measureNanoTime {
+        for (o in (0 until 13)) {
+            for (e in (0 until 13)) {
+                if (o == e) {
+                    drawP[0][o][e] = 1.0
+                } else if (e > o) {
+                    winP[0][o][e] = 1.0
+                } else {
+                    loseP[0][o][e] = 1.0
+                }
+            }
+        }
+        for (turn in (1 until 75)) {
+            for (o in (1 until 13)) {
+                loseP[turn][o][0] = 1.0
+            }
+            for (e in (1 until 13)) {
+                winP[turn][0][e] = 1.0
+            }
+            drawP[turn][0][0] = 1.0
+        }
+
+        for (turn in (1 until 75)) {
+            for (o in (1 until 13)) {
+                for (e in (1 until 13)) {
+
+                    for (oi in (0 until 3)) {
+                        for (ei in (0 until 3)) {
+                            val op = Math.max(o - oi, 0)
+                            val ep = Math.max(e - ei, 0)
+                            drawP[turn][o][e] += drawP[turn - 1][op][ep] * oe[oi + ei * 3]
+                            winP[turn][o][e] += winP[turn - 1][op][ep] * oe[oi + ei * 3]
+                            loseP[turn][o][e] += loseP[turn - 1][op][ep] * oe[oi + ei * 3]
+                        }
+                    }
+                    val sum = winP[turn][o][e] + drawP[turn][o][e] + loseP[turn][o][e]
+                    winP[turn][o][e] /= sum
+                    drawP[turn][o][e] /= sum
+                    loseP[turn][o][e] /= sum
+                }
+            }
+        }
+    }
 }
 
 val startTime = System.currentTimeMillis()
@@ -103,7 +162,7 @@ var numberOfDraws = 0
 
 fun performGame() {
     setupMonitoring()
-
+    initProbabilities()
     Warmup.warmupOnce()
 
     try {
@@ -521,7 +580,7 @@ private fun findBestPush(
     return if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(10)) {
         selectBestPushByTwoComparators(pushes)
     } else {
-        selectPivotSolver(pushes, numberOfDraws, prevPushesAtThisPosition)
+        selectPivotSolver(pushes, numberOfDraws, (150 - gameBoard.step) / 2 - 1, prevPushesAtThisPosition)
     }
 }
 
@@ -532,11 +591,10 @@ val stringBuilder = StringBuilder(10_000)
 private fun selectPivotSolver(
     pushes: List<PushAndMove>,
     numberOfDraws: Int,
+    pushRemain: Int,
     prevPushesAtThisPosition: List<Pushes>?
 ): OnePush {
-    log("pivotSolver")
-
-    log("prev pushes at this position: $prevPushesAtThisPosition")
+    log("pivotSolver: prev pushes at this position: $prevPushesAtThisPosition")
 
     val prevEnemyPushes = prevPushesAtThisPosition?.map { it.enemyPush }
 
@@ -570,15 +628,23 @@ private fun selectPivotSolver(
         if (enemyItemRemain == 0) {
             return 0.0
         }
-        val bothItems = enemyItemRemain + ourItemRemain
-        val probabilityToWin = enemyItemRemain.toDouble() / bothItems
+
+        val probabilityToWin = winP[pushRemain][ourItemRemain][enemyItemRemain]
 
         val secondaryScore = pushOutItems(push) * 100 + space(push)
         val result = if (secondaryScore > 0) {
-            val delta = enemyItemRemain.toDouble() / (bothItems * (bothItems - 1))
+            var delta = winP[pushRemain][ourItemRemain - 1][enemyItemRemain] - probabilityToWin
+            if (delta < 0) {
+                log("Negative delta=$delta for positive secondary: [$pushRemain][$ourItemRemain][$enemyItemRemain] ")
+                delta = 0.0
+            }
             probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
         } else if (secondaryScore < 0) {
-            val delta = ourItemRemain.toDouble() / (bothItems * (bothItems - 1))
+            var delta = probabilityToWin - winP[pushRemain][ourItemRemain][enemyItemRemain - 1]
+            if (delta < 0) {
+                log("Negative delta=$delta for negative secondary: [$pushRemain][$ourItemRemain][$enemyItemRemain] ")
+                delta = 0.0
+            }
             probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
         } else {
             probabilityToWin
@@ -662,7 +728,8 @@ private fun selectPivotSolver(
                 break
             }
 
-            run { // step #4
+            run {
+                // step #4
                 val pivot = a[p][q]
 
                 corner = corner - bottom[p] * right[q] / pivot
@@ -942,12 +1009,12 @@ class PushResultTable(pushes: List<PushAndMove>) {
     override fun toString(): String {
         val header =
             "our\\enemy |  " + Direction.allDirections.flatMap { dir ->
-                    (0..6).map { rc ->
-                        "${dir.name.padStart(
-                            5
-                        )}$rc"
-                    }
+                (0..6).map { rc ->
+                    "${dir.name.padStart(
+                        5
+                    )}$rc"
                 }
+            }
                 .joinToString(separator = "    | ")
         val rows = Direction.allDirections.flatMap { dir ->
             (0..6).map { rc ->
@@ -1614,6 +1681,51 @@ class TeeInputStream(private var source: InputStream, private var copySink: Outp
 object Warmup {
 
     fun warmupOnce() {
+//        var count =1
+//        val oe = Array(4){IntArray(4)}
+//        val fields = toPush.gameBoard.board.toMutableList()
+//        fields.add(toPush.gameBoard.ourField)
+//        fields.add(toPush.gameBoard.enemyField)
+//        val quests =
+//            fields.filter { it.item != null && it.item.itemPlayerId == 0 }.map { it.item!!.itemName }.toMutableList()
+//        val domain = Domains()
+//        while (true) {
+//            if (count % 500000 ==0 ){
+//                    for(o in (0 until 4)) {
+//                        for(e in (0 until 4)){
+//                            print(oe[o][e] *1.0/ count *100)
+//                            print(" ")
+//                        }
+//                        println()
+//                    }
+//                println("-------------------")
+//            }
+//
+//            fields.shuffle(rand)
+//            val rboard =  GameBoard(fields.subList(0,49).toTypedArray(), fields[49], fields[50])
+//            quests.shuffle(rand)
+//            val ourQuest = quests.subList(0, 3).toList()
+//            quests.shuffle(rand)
+//            val enemyQuest = quests.subList(0, 3).toList()
+//            val ourD = rboard.findDomain(
+//                Point.point(rand.nextInt(7), rand.nextInt(7)),
+//                ourQuest,
+//                enemyQuest,
+//                domain,
+//                emptyList()
+//            )
+//            val enemyD = rboard.findDomain(
+//                Point.point(rand.nextInt(7), rand.nextInt(7)),
+//                ourQuest,
+//                enemyQuest,
+//                domain,
+//                emptyList()
+//            )
+//            oe[ourD.getOurQuestsCount()][enemyD.getEnemyQuestsCount()]+=1
+//            domain.clear()
+//            count++
+//        }
+
         log("warmup once started")
         lastPush = findBestPush(
             toPush.we,
