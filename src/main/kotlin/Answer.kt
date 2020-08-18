@@ -10,6 +10,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.StringReader
+import java.lang.StringBuilder
 import java.lang.management.GarbageCollectorMXBean
 import java.lang.management.ManagementFactory
 import java.text.DecimalFormat
@@ -525,6 +526,7 @@ private fun findBestPush(
 }
 
 val a = Array<DoubleArray>(28) { DoubleArray(28) { 0.0 } } // interior[column][row]
+val stringBuilder = StringBuilder(10_000)
 
 //pivot method from https://www.math.ucla.edu/~tom/Game_Theory/mat.pdf
 private fun selectPivotSolver(
@@ -541,7 +543,7 @@ private fun selectPivotSolver(
     val pushes = if (prevEnemyPushes == null) {
         pushes
     } else {
-        pushes.filter { it.pushes.enemyPush in prevEnemyPushes}
+        pushes.filter { it.pushes.enemyPush in prevEnemyPushes }
     }
 
     fun score(push: PushAndMove): Double {
@@ -601,6 +603,23 @@ private fun selectPivotSolver(
         val score = score(push)
         a[enemyPushes.indexOf(push.pushes.enemyPush)][ourPushes.indexOf(push.pushes.ourPush)] = score
     }
+
+    stringBuilder.clear()
+
+    stringBuilder.append("\n#our\\enemy | ")
+    enemyPushes.joinTo(stringBuilder, " | ")
+    stringBuilder.append("\n")
+    for (j in (0 until OUR_SIZE)){
+        stringBuilder.append("#       ")
+        stringBuilder.append(ourPushes[j])
+        stringBuilder.append(" | ")
+        for (i in (0 until ENEMY_SIZE)){
+            stringBuilder.append((100*a[i][j]).toInt())
+            stringBuilder.append(" | ")
+        }
+        stringBuilder.append("\n")
+    }
+    log(stringBuilder.toString())
 
 
     val hLabel = IntArray(ENEMY_SIZE) { idx -> -idx - 1 } // y_i are represented by negative ints
@@ -721,132 +740,23 @@ private fun selectPivotSolver(
 
     log("selection=$selection ourSum=${ourStrategy.sum()} enemySum=${enemyStrategy.sum()}")
 
-    var currentSum = 0.0
-    for (idx in (0 until OUR_SIZE)) {
-        currentSum += ourStrategy[idx]
-        if (currentSum >= selection) {
-            return ourPushes[idx]
+    run {
+        val best = ourStrategy
+            .mapIndexed { idx, score -> ourPushes[idx] to score }
+            .sortedByDescending { it.second }
+            .take(3)
+        val norm = best.sumByDouble { it.second }
+        var currentSum = 0.0
+        for (idx in best.indices) {
+            currentSum += best[idx].second
+            if (currentSum >= selection * norm) {
+                return best[idx].first
+            }
         }
     }
 
     throw IllegalStateException("aaaaa")
 
-}
-
-private fun selectBestPushByMatrixSolver(pushes: List<PushAndMove>, deadlineTimeNanos: Long): OnePush {
-    fun score(push: PushAndMove): Double {
-        val ourItemRemain = push.ourPlayer.numPlayerCards - push.ourQuestCompleted
-        val enemyItemRemain = push.enemyPlayer.numPlayerCards - push.enemyQuestCompleted
-        if (ourItemRemain == 0) {
-            if (enemyItemRemain == 0) {
-                return 0.5
-            } else {
-                return 1.0
-            }
-        } else if (enemyItemRemain == 0) {
-            return 0.0
-        }
-        val bothItems = enemyItemRemain + ourItemRemain
-        val probabilityToWin = enemyItemRemain.toDouble() / bothItems
-
-        val secondaryScore = pushOutItems(push) * 100 + space(push)
-        if (secondaryScore > 0) {
-            val delta = enemyItemRemain.toDouble() / (bothItems * (bothItems - 1))
-            return probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
-        } else if (secondaryScore < 0) {
-            val delta = ourItemRemain.toDouble() / (bothItems * (bothItems - 1))
-            return probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
-        } else {
-            return probabilityToWin
-        }
-    }
-
-    val byOurPush = Array(28) { DoubleArray(28) { 0.0 } }
-    val byEnemyPush = Array(28) { DoubleArray(28) { 0.0 } }
-
-    var maxScore = Double.MIN_VALUE
-    var maxOurMove = -1
-    for (push in pushes) {
-        val score = score(push)
-        byOurPush[push.pushes.ourPush.idx][push.pushes.enemyPush.idx] = score
-        byEnemyPush[push.pushes.enemyPush.idx][push.pushes.ourPush.idx] = score
-        if (score > maxScore) {
-            maxScore = score
-            maxOurMove = push.pushes.ourPush.idx
-        }
-    }
-
-    val ourStrategy = IntArray(28) { 0 }
-    val enemyStrategy = IntArray(28) { 0 }
-
-    ourStrategy[maxOurMove] = 1
-
-    var i = 0
-    while (true) {
-        i++
-        if (deadlineTimeNanos > System.nanoTime()) {
-            break
-        }
-        run {
-            var minEnemyScore = Double.MAX_VALUE
-            var minEnemyMove = -1
-
-            for (enemyMove in (0..27)) {
-                var score = 0.0
-                for (ourMove in (0..27)) {
-                    score += byEnemyPush[enemyMove][ourMove] * ourStrategy[ourMove]
-                }
-                if (score < minEnemyScore) {
-                    minEnemyScore = score
-                    minEnemyMove = enemyMove
-                }
-            }
-            enemyStrategy[minEnemyMove] += 1
-        }
-        run {
-            var maxOurScore = Double.MIN_VALUE
-            var maxOurMove = -1
-            for (ourMove in (0..27)) {
-                var score = 0.0
-                for (enemyMove in (0..27)) {
-                    score += byOurPush[ourMove][enemyMove] * enemyStrategy[enemyMove]
-                }
-                if (score > maxOurScore) {
-                    maxOurScore = score
-                    maxOurMove = ourMove
-                }
-            }
-            ourStrategy[maxOurMove] += 1
-        }
-        if (i % 10_000 == 0) {
-
-            val ourSum = ourStrategy.sum()
-            log("OurStrategy for iteration $i: ${ourStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to (score * 1.0 / ourSum) }
-                .sortedByDescending { it.second }
-                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
-        }
-    }
-
-    val ourSum = ourStrategy.sum()
-    val enemySum = enemyStrategy.sum()
-
-    val selection = rand.nextInt(ourSum) + 1
-
-    log("Our iterations: $ourSum, enemy iteration: $enemySum")
-    log("OurStrategy: ${ourStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to (score * 1.0 / ourSum) }
-        .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
-    log("EnemyStrategy: ${enemyStrategy.mapIndexed { idx, score -> OnePush.byIdx(idx) to (score * 1.0 / ourSum) }
-        .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
-
-    var currentSum = 0
-    for (idx in (0..28)) {
-        currentSum += ourStrategy[idx]
-        if (currentSum >= selection) {
-            return OnePush.byIdx(idx)
-        }
-    }
-
-    throw IllegalStateException("aaaaa")
 }
 
 private fun selectBestPushByTwoComparators(pushes: List<PushAndMove>): OnePush {
