@@ -177,6 +177,7 @@ var lastPush: OnePush? = null
 var numberOfDraws = 0
 
 fun performGame() {
+    val globalStart = System.nanoTime()
     setupMonitoring()
     initProbabilities()
     Warmup.warmupOnce()
@@ -196,7 +197,7 @@ fun performGame() {
         val allBoards = mutableMapOf<GameBoard, MutableSet<Pushes>>()
 
         repeat(150) { step ->
-            val start = System.nanoTime()
+            val start = if (step == 0) globalStart else System.nanoTime()
             log("step $step")
             BoardCache.reset()
 
