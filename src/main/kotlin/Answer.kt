@@ -378,7 +378,7 @@ private fun findBestMove(
     }
     var count = 0
     for (pushes in Pushes.allPushes) {
-        if (System.nanoTime() - startTime > timeLimit) {
+        if (System.nanoTime() - startTime > timeLimit && count > 0) {
             log("stop computePushes, computed $count pushes")
             break
         }
