@@ -29,6 +29,7 @@ import kotlin.system.measureNanoTime
 val winP = Array(75) { Array(13) { DoubleArray(13) } }
 val loseP = Array(75) { Array(13) { DoubleArray(13) } }
 val drawP = Array(75) { Array(13) { DoubleArray(13) } }
+val estimate = Array(75) { Array(13) { DoubleArray(13) } }
 
 fun main() {
     performGame()
@@ -60,8 +61,10 @@ private fun initProbabilities() {
             for (e in (0 until 13)) {
                 if (o == e) {
                     drawP[0][o][e] = 1.0
+                    estimate[0][o][e] = 0.5
                 } else if (e > o) {
                     winP[0][o][e] = 1.0
+                    estimate[0][o][e] = 1.0
                 } else {
                     loseP[0][o][e] = 1.0
                 }
@@ -73,8 +76,10 @@ private fun initProbabilities() {
             }
             for (e in (1 until 13)) {
                 winP[turn][0][e] = 1.0
+                estimate[turn][0][e] = 1.0
             }
             drawP[turn][0][0] = 1.0
+            estimate[turn][0][0] = 0.5
         }
 
         for (turn in (1 until 75)) {
@@ -94,6 +99,7 @@ private fun initProbabilities() {
                     winP[turn][o][e] /= sum
                     drawP[turn][o][e] /= sum
                     loseP[turn][o][e] /= sum
+                    estimate[turn][o][e] = winP[turn][o][e] + drawP[turn][o][e] / 2
                 }
             }
         }
@@ -679,30 +685,34 @@ private fun selectPivotSolver(
             return 0.0
         }
 
-        val probabilityToWin = winP[pushRemain][ourItemRemain][enemyItemRemain]
+        val gameEstimate = estimate[pushRemain][ourItemRemain][enemyItemRemain]
+        if (pushRemain == 0) {
+            return gameEstimate
+        }
 
         val secondaryScore = pushOutItems(push) * 100 + space(push)
         val result = if (secondaryScore > 0) {
-            var delta = winP[pushRemain][ourItemRemain - 1][enemyItemRemain] - probabilityToWin
+            var delta = estimate[pushRemain][ourItemRemain - 1][enemyItemRemain] - gameEstimate
             if (delta < 0) {
-                log("Negative delta=$delta for positive secondary: [$pushRemain][$ourItemRemain][$enemyItemRemain] ")
+                log("!!!Negative delta=$delta for positive secondary: [$pushRemain][$ourItemRemain][$enemyItemRemain] ")
                 delta = 0.0
             }
-            probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
+            gameEstimate + delta * 0.5 * secondaryScore / (34 * 100 + 48)
         } else if (secondaryScore < 0) {
-            var delta = probabilityToWin - winP[pushRemain][ourItemRemain][enemyItemRemain - 1]
+            var delta = gameEstimate - estimate[pushRemain][ourItemRemain][enemyItemRemain - 1]
             if (delta < 0) {
-                log("Negative delta=$delta for negative secondary: [$pushRemain][$ourItemRemain][$enemyItemRemain] ")
+                log("!!!Negative delta=$delta for negative secondary: [$pushRemain][$ourItemRemain][$enemyItemRemain] ")
                 delta = 0.0
             }
-            probabilityToWin + delta * 0.5 * secondaryScore / (34 * 100 + 48)
+            gameEstimate + delta * 0.5 * secondaryScore / (34 * 100 + 48)
         } else {
-            probabilityToWin
+            gameEstimate
         }
+        //todo use estimate[10 -numberOfDraws] instead of pow?
         if (numberOfDraws > 0 && push.pushes.collision()) {
             if (enemyItemRemain < ourItemRemain) {
                 return Math.pow(result, numberOfDraws.toDouble() + 1)
-            } else if (enemyItemRemain == ourItemRemain && push.board.step < 50 && numberOfDraws > 1) {
+            } else if (enemyItemRemain == ourItemRemain && gameBoard.step < 50 && numberOfDraws > 1) {
                 return Math.pow(result, numberOfDraws.toDouble())
             }
         }
@@ -720,22 +730,24 @@ private fun selectPivotSolver(
         a[enemyPushes.indexOf(push.pushes.enemyPush)][ourPushes.indexOf(push.pushes.ourPush)] = score
     }
 
-    stringBuilder.clear()
+    if (false) {
+        stringBuilder.clear()
 
-    stringBuilder.append("\n#our\\enemy | ")
-    enemyPushes.joinTo(stringBuilder, " | ")
-    stringBuilder.append("\n")
-    for (j in (0 until OUR_SIZE)) {
-        stringBuilder.append("#       ")
-        stringBuilder.append(ourPushes[j])
-        stringBuilder.append(" | ")
-        for (i in (0 until ENEMY_SIZE)) {
-            stringBuilder.append((100 * a[i][j]).toInt())
-            stringBuilder.append(" | ")
-        }
+        stringBuilder.append("\n#our\\enemy | ")
+        enemyPushes.joinTo(stringBuilder, " | ")
         stringBuilder.append("\n")
+        for (j in (0 until OUR_SIZE)) {
+            stringBuilder.append("#       ")
+            stringBuilder.append(ourPushes[j])
+            stringBuilder.append(" | ")
+            for (i in (0 until ENEMY_SIZE)) {
+                stringBuilder.append((100 * a[i][j]).toInt())
+                stringBuilder.append(" | ")
+            }
+            stringBuilder.append("\n")
+        }
+        log(stringBuilder.toString())
     }
-    log(stringBuilder.toString())
 
 
     val hLabel = IntArray(ENEMY_SIZE) { idx -> -idx - 1 } // y_i are represented by negative ints
