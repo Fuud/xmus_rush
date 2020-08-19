@@ -115,6 +115,19 @@ val twoDigitsAfterDotFormat = DecimalFormat().apply {
     maximumFractionDigits = 2
 }
 
+val probablyLogCompilation: () -> Unit = run {
+    var lastCompilationTime = 0L
+    val compilationBean = ManagementFactory.getCompilationMXBean()
+
+    return@run {
+        val compilationTime = compilationBean.totalCompilationTime
+        if (compilationTime > lastCompilationTime){
+            log("Compilation: ${compilationTime - lastCompilationTime}")
+            lastCompilationTime = compilationTime
+        }
+    }
+}
+
 fun setupMonitoring() {
     log("java started as: ${ManagementFactory.getRuntimeMXBean().inputArguments}")
 
@@ -397,6 +410,8 @@ private fun findBestMove(
         }
     }
 
+    probablyLogCompilation()
+
     val pathsComparator = compareBy<PathElem> { pathElem ->
         pathElem.itemsTaken.size
     }.thenComparing { pathElem ->
@@ -420,6 +435,7 @@ private fun findBestMove(
     }
 
     val bestPath = paths.maxWith(pathsComparator)
+    probablyLogCompilation()
     return bestPath
 }
 
@@ -607,12 +623,15 @@ private fun findBestPush(
         enemyQuests,
         timeLimitNanos = timeLimitNanos
     )
+    probablyLogCompilation()
 
-    return if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(10)) {
+    val result = if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(10)) {
         selectBestPushByTwoComparators(pushes)
     } else {
         selectPivotSolver(we, enemy, gameBoard, pushes, step, numberOfDraws, prevPushesAtThisPosition)
     }
+    probablyLogCompilation()
+    return result
 }
 
 val a = Array<DoubleArray>(28) { DoubleArray(28) { 0.0 } } // interior[column][row]
