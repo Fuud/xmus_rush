@@ -993,7 +993,7 @@ fun computePushes(
 
     val result = mutableListOf<PushAndMove>()
     for (pushes in Pushes.allPushes) {
-        if (System.nanoTime() - startTime > timeLimitNanos) {
+        if (System.nanoTime() - startTime > timeLimitNanos && result.isNotEmpty()) {
             log("stop computePushes, computed ${result.size} pushes")
             return result
         }
