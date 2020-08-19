@@ -785,7 +785,7 @@ private fun selectPivotSolver(
             stringBuilder.append(ourPushes[j])
             stringBuilder.append(" | ")
             for (i in (0 until ENEMY_SIZE)) {
-                stringBuilder.append((100 * a[i][j]).toInt())
+                stringBuilder.append((100 * a[i][j]).toInt().toString().padStart(2))
                 stringBuilder.append(" | ")
             }
             stringBuilder.append("\n")
