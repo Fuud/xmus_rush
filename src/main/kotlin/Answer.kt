@@ -200,7 +200,7 @@ fun performGame() {
             log("step $step")
             BoardCache.reset()
 
-            val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input, step)
+            val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input)
 
             // Write an action using println()
             // To debug: System.err.println("Debug messages...");
@@ -453,7 +453,7 @@ fun tryFindEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: OnePush)
     return null // for example if item was taken immediately after push we cannot find enemy move
 }
 
-private fun readInput(input: Scanner, step: Int): InputConditions {
+private fun readInput(input: Scanner): InputConditions {
     val turnType = input.nextInt() // 0 - push, 1 - move
     val board = BoardDto(input)
 
@@ -484,9 +484,7 @@ private fun readInput(input: Scanner, step: Int): InputConditions {
         boardArray,
         ourField,
         enemyField
-    ).apply {
-        this.step = step
-    }
+    )
 
     return InputConditions(turnType, gameBoard, ourQuests, enemyQuests, we, enemy)
 }
@@ -612,7 +610,7 @@ private fun findBestPush(
     return if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(10)) {
         selectBestPushByTwoComparators(pushes)
     } else {
-        selectPivotSolver(we, enemy, gameBoard, pushes, numberOfDraws, prevPushesAtThisPosition)
+        selectPivotSolver(we, enemy, gameBoard, pushes, step, numberOfDraws, prevPushesAtThisPosition)
     }
 }
 
@@ -625,15 +623,16 @@ private fun selectPivotSolver(
     enemy: Player,
     gameBoard: GameBoard,
     pushes: List<PushAndMove>,
+    step: Int,
     numberOfDraws: Int,
     prevPushesAtThisPosition: Set<Pushes>?
 ): OnePush {
     log("pivotSolver: prev pushes at this position: $prevPushesAtThisPosition")
 
     val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
-            || (we.numPlayerCards == enemy.numPlayerCards && gameBoard.step < 50))
+            || (we.numPlayerCards == enemy.numPlayerCards && step < 50))
 
-    val pushRemain = (150 - gameBoard.step) / 2 - 1
+    val pushRemain = (150 - step) / 2 - 1
     val prevEnemyPushes = prevPushesAtThisPosition?.map { it.enemyPush }
     val prevOurPushes = prevPushesAtThisPosition?.map { it.ourPush }
 
@@ -712,7 +711,7 @@ private fun selectPivotSolver(
         if (numberOfDraws > 0 && push.pushes.collision()) {
             if (enemyItemRemain < ourItemRemain) {
                 return Math.pow(result, numberOfDraws.toDouble() + 1)
-            } else if (enemyItemRemain == ourItemRemain && gameBoard.step < 50 && numberOfDraws > 1) {
+            } else if (enemyItemRemain == ourItemRemain && step < 50 && numberOfDraws > 1) {
                 return Math.pow(result, numberOfDraws.toDouble())
             }
         }
@@ -1252,7 +1251,6 @@ class Domains {
 }
 
 data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyField: Field) {
-    var step: Int = 0
     private val cachedPaths = arrayOfNulls<MutableList<PathElem>>(2)
 
     companion object {
@@ -1437,7 +1435,7 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
             board = newBoard,
             ourField = if (playerId == 0) newField else ourField,
             enemyField = if (playerId == 1) newField else enemyField
-        ).apply { this.step = this@GameBoard.step + 1 }
+        )
     }
 
 
@@ -1922,6 +1920,6 @@ CANE 1
 CANDY 1 
 """.trimIndent()
 
-    val toPush = readInput(Scanner(StringReader(warmupPush)), 0)
-    val toMove = readInput(Scanner(StringReader(warmupMove)), 1)
+    val toPush = readInput(Scanner(StringReader(warmupPush)))
+    val toMove = readInput(Scanner(StringReader(warmupMove)))
 }
