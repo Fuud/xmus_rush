@@ -26,6 +26,41 @@ import kotlin.system.measureNanoTime
 /**
  * Help the Christmas elves fetch presents in a magical labyrinth!
  **/
+val startTime = System.currentTimeMillis()
+fun log(s: Any?) {
+    System.err.println("\n#[${System.currentTimeMillis() - startTime}] $s\n")
+}
+
+
+val setupMonitoring = run {
+    log("java started as: ${ManagementFactory.getRuntimeMXBean().inputArguments}")
+
+    val garbageCollectorMXBeans: Collection<GarbageCollectorMXBean> =
+        ManagementFactory.getGarbageCollectorMXBeans()
+
+
+    garbageCollectorMXBeans.forEach { bean ->
+
+        var lastCount = bean.collectionCount
+        var lastTime = bean.collectionTime
+        val listener = NotificationListener { _, _ ->
+            val newCount = bean.collectionCount
+            val newTime = bean.collectionTime
+            log("GC: ${bean.name} collectionsCount=${newCount - lastCount} collectionsTime=${newTime - lastTime}ms totalCollectionTime=$newTime")
+            lastCount = newCount
+            lastTime = newTime
+        }
+        (bean as NotificationEmitter).addNotificationListener(
+            listener,
+            null,
+            "haha"
+        )
+    }
+    log("setup monitoring done")
+}
+
+// util
+
 val winP = Array(75) { Array(13) { DoubleArray(13) } }
 val loseP = Array(75) { Array(13) { DoubleArray(13) } }
 val drawP = Array(75) { Array(13) { DoubleArray(13) } }
@@ -106,10 +141,7 @@ private fun initProbabilities() {
     }
 }
 
-val startTime = System.currentTimeMillis()
-fun log(s: Any?) {
-    System.err.println("\n#[${System.currentTimeMillis() - startTime}] $s\n")
-}
+
 
 val twoDigitsAfterDotFormat = DecimalFormat().apply {
     maximumFractionDigits = 2
@@ -119,38 +151,13 @@ val probablyLogCompilation: () -> Unit = run {
     var lastCompilationTime = 0L
     val compilationBean = ManagementFactory.getCompilationMXBean()
 
+    log("compilation log installed")
     return@run {
         val compilationTime = compilationBean.totalCompilationTime
         if (compilationTime > lastCompilationTime){
-            log("Compilation: ${compilationTime - lastCompilationTime}")
+            log("Compilation: diff: ${compilationTime - lastCompilationTime} total: $compilationTime")
             lastCompilationTime = compilationTime
         }
-    }
-}
-
-fun setupMonitoring() {
-    log("java started as: ${ManagementFactory.getRuntimeMXBean().inputArguments}")
-
-    val garbageCollectorMXBeans: Collection<GarbageCollectorMXBean> =
-        ManagementFactory.getGarbageCollectorMXBeans()
-
-
-    garbageCollectorMXBeans.forEach { bean ->
-
-        var lastCount = bean.collectionCount
-        var lastTime = bean.collectionTime
-        val listener = NotificationListener { _, _ ->
-            val newCount = bean.collectionCount
-            val newTime = bean.collectionTime
-            log("GC: ${bean.name} collectionsCount=${newCount - lastCount} collectionsTime=${newTime - lastTime}ms")
-            lastCount = newCount
-            lastTime = newTime
-        }
-        (bean as NotificationEmitter).addNotificationListener(
-            listener,
-            null,
-            "haha"
-        )
     }
 }
 
@@ -191,9 +198,9 @@ var numberOfDraws = 0
 
 fun performGame() {
     val globalStart = System.nanoTime()
-    setupMonitoring()
     initProbabilities()
     Warmup.warmupOnce()
+    Pushes.installRealPushes()
 
     try {
 //        val input = Scanner(System.`in`)
@@ -533,20 +540,38 @@ data class OnePush(val direction: Direction, val rowColumn: Int) {
 
 data class Pushes(val ourPush: OnePush, val enemyPush: OnePush) {
     companion object {
-        val allPushes: List<Pushes> =
-            (0..6).flatMap { ourRowColumn ->
-                Direction.allDirections
-                    .flatMap { ourDirection ->
-                        (0..6).flatMap { enemyRowColumn ->
-                            Direction.allDirections.map { enemyDirection ->
-                                Pushes(
-                                    OnePush(ourDirection, ourRowColumn),
-                                    OnePush(enemyDirection, enemyRowColumn)
-                                )
-                            }
+        val realAllPushes = (0..6).flatMap { ourRowColumn ->
+            Direction.allDirections
+                .flatMap { ourDirection ->
+                    (0..6).flatMap { enemyRowColumn ->
+                        Direction.allDirections.map { enemyDirection ->
+                            Pushes(
+                                OnePush(ourDirection, ourRowColumn),
+                                OnePush(enemyDirection, enemyRowColumn)
+                            )
                         }
                     }
-            }.shuffled(rand)
+                }
+        }.shuffled(rand)
+
+        var allPushes: List<Pushes> = (0..0).flatMap { ourRowColumn ->
+            Direction.allDirections
+                .flatMap { ourDirection ->
+                    (0..0).flatMap { enemyRowColumn ->
+                        Direction.allDirections.map { enemyDirection ->
+                            Pushes(
+                                OnePush(ourDirection, ourRowColumn),
+                                OnePush(enemyDirection, enemyRowColumn)
+                            )
+                        }
+                    }
+                }
+        }.shuffled(rand)
+
+        fun installRealPushes(){
+            allPushes = realAllPushes
+        }
+
     }
 
     fun collision(): Boolean {
@@ -1759,6 +1784,9 @@ class TeeInputStream(private var source: InputStream, private var copySink: Outp
 }
 
 object Warmup {
+    init {
+        log("warmup data read")
+    }
 
     fun warmupOnce() {
 //        var count =1
