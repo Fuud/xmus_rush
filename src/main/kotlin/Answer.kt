@@ -375,10 +375,12 @@ private fun findBestMove(
             )
         }
         if (enemyType == EnemyType.UNKNOWN || enemyType == EnemyType.STABLE) {
-            if (enemyMovesInThisPosBeforeLastMove.isNotEmpty() && previousPushes.size == 2) {
-                enemyType = EnemyType.STABLE
-            } else {
-                enemyType = EnemyType.UNSTABLE
+            if (enemyMovesInThisPosBeforeLastMove.isNotEmpty()) {
+                if (previousPushes.size == 2) {
+                    enemyType = EnemyType.STABLE
+                } else {
+                    enemyType = EnemyType.UNSTABLE
+                }
             }
         }
     }
