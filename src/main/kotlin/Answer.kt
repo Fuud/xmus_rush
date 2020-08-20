@@ -190,6 +190,7 @@ val moveDomains = Domains()
 val moveScores = Point.points.flatten()
     .map { it to 0 }
     .toMap().toMutableMap()
+val movePushScores = Array(49) { IntArray(28) }
 
 
 var lastBoard: GameBoard? = null
@@ -222,6 +223,28 @@ fun performGame() {
             BoardCache.reset()
 
             val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input)
+            if (globalQuests.size < 12) {
+                fun processQuests(quests: List<String>) {
+                    quests.forEach { if (!globalQuests.contains(it)) globalQuests.add(it) }
+                }
+                if (we.numPlayerCards - ourQuests.size > enemy.numPlayerCards - enemyQuests.size) {
+                    //winner first
+                    processQuests(enemyQuests)
+                    processQuests(ourQuests)
+                } else {
+                    //winner first
+                    processQuests(ourQuests)
+                    processQuests(enemyQuests)
+                }
+                if (globalQuests.size == 11) {
+                    fun processItem(it: Field) {
+                        if (it.item != null && !globalQuests.contains(it.item.itemName)) globalQuests.add(it.item.itemName)
+                    }
+                    gameBoard.board.forEach { processItem(it) }
+                    processItem(gameBoard.ourField)
+                    processItem(gameBoard.enemyField)
+                }
+            }
 
             // Write an action using println()
             // To debug: System.err.println("Debug messages...");
@@ -303,6 +326,8 @@ fun performGame() {
     }
 }
 
+val globalQuests = arrayListOf<String>()
+
 private fun findBestMove(
     gameBoard: GameBoard,
     allBoards: MutableMap<GameBoard, MutableSet<Pushes>>,
@@ -358,9 +383,7 @@ private fun findBestMove(
         }
     }
 
-
     val paths = gameBoard.findPaths(we, ourQuests)
-    //todo there are rare mazes where we can complete any two quests from three
     val itemsTaken = paths.maxWith(compareBy { it.itemsTaken.size })!!.itemsTaken
     val itemsTakenSize = itemsTaken.size
     val ourNextQuests = ourQuests.toMutableList()
@@ -377,6 +400,9 @@ private fun findBestMove(
         0.0
     }
     var count = 0
+    for (p in ends) {
+        movePushScores[p.idx].fill(0)
+    }
     for (pushes in Pushes.allPushes) {
         if (System.nanoTime() - startTime > timeLimit && count > 0) {
             log("stop computePushes, computed $count pushes")
@@ -412,16 +438,14 @@ private fun findBestMove(
             val domain =
                 pushAndMove.board.findDomain(pushP, ourNextQuests, enemyQuests, moveDomains, itemsTaken)
             val score =
-                ((domain.getOurQuestsCount() * 16 + 12 * domain.ourItems * possibleQuestCoef) * 4 + domain.size).toInt()
+                ((domain.getOurQuestsCount() * 16 + 12 * domain.ourItems * possibleQuestCoef) * 12 + domain.size).toInt()
             moveScores[point] = moveScores[point]!! + score
+            movePushScores[point.idx][pushes.ourPush.idx] += score
         }
     }
+    val maxScoreByPoint = movePushScores.map { it.max() }
 
-    probablyLogCompilation()
-
-    val pathsComparator = compareBy<PathElem> { pathElem ->
-        pathElem.itemsTaken.size
-    }.thenComparing { pathElem ->
+    val scoreComparator = compareBy<PathElem> { pathElem ->
         moveScores[pathElem.point]!!
     }.thenComparing { pathElem ->
         max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
@@ -440,8 +464,19 @@ private fun findBestMove(
     }.thenComparing { pathElem ->
         gameBoard[pathElem.point].tile.roads
     }
+    val pathsComparator = compareBy<PathElem> { pathElem ->
+        pathElem.itemsTaken.size
+    }.thenComparing { pathElem ->
+        maxScoreByPoint[pathElem.point.idx]!!
+    }.thenComparing(scoreComparator)
 
     val bestPath = paths.maxWith(pathsComparator)
+    val maxByAverageScore = paths.maxWith(compareBy<PathElem> { pathElem ->
+        pathElem.itemsTaken.size
+    }.thenComparing(scoreComparator))
+    if (maxByAverageScore?.point != bestPath?.point) {
+        log("MoveCandidate by average score ${maxByAverageScore?.point} differ from current best ${bestPath?.point}")
+    }
     probablyLogCompilation()
     return bestPath
 }
@@ -1869,7 +1904,7 @@ object Warmup {
                 toPush.gameBoard,
                 toPush.ourQuests,
                 toPush.enemyQuests,
-                step = -2 // small limit
+                step = 2 // small limit
             )
             if (System.nanoTime() > start + limitNanos) {
                 break
