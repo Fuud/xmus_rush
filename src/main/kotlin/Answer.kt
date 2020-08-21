@@ -86,10 +86,10 @@ private fun initProbabilities() {
     val p02 = 0.018
     val p10 = 0.151
     val p11 = 0.040
-    val p12 = 0.05
+    val p12 = 0.050
     val p20 = 0.018
-    val p21 = 0.05
-    val p22 = 0.01
+    val p21 = 0.050
+    val p22 = 0.010
     val oe = doubleArrayOf(p00, p01, p02, p10, p11, p12, p20, p21, p22)
     val duration = measureNanoTime {
         for (o in (0 until 13)) {
@@ -796,18 +796,14 @@ private fun selectPivotSolver(
         }
 
         val secondaryScore = (pushOutItems(push) * 100 + space(push)).toDouble() / (34 * 100 + 48)
-        val gameEstimate = computeEstimate(ourItemRemain, enemyItemRemain, pushesRemain, secondaryScore)
-
-        if (pushesRemain == 0) {
-            return gameEstimate
-        }
-        //todo use estimate[10 -numberOfDraws] instead of pow?
-        if (numberOfDraws > 0 && push.pushes.collision()) {
-            if (enemyItemRemain < ourItemRemain) {
-                return Math.pow(gameEstimate, numberOfDraws.toDouble() + 1)
-            } else if (enemyItemRemain == ourItemRemain && step < 50 && numberOfDraws > 1) {
-                return Math.pow(gameEstimate, numberOfDraws.toDouble())
+        val gameEstimate = if (push.pushes.collision()) {
+            if (numberOfDraws == 0) {
+                computeEstimate(ourItemRemain, enemyItemRemain, Math.max(pushesRemain - 1, 0), secondaryScore)
+            } else {
+                computeEstimate(ourItemRemain, enemyItemRemain, 9 - numberOfDraws, secondaryScore)
             }
+        } else {
+            computeEstimate(ourItemRemain, enemyItemRemain, pushesRemain, secondaryScore)
         }
 
         return gameEstimate
