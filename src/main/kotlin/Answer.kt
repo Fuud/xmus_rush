@@ -696,6 +696,35 @@ private fun findBestPush(
     return result
 }
 
+
+fun computeEstimate(
+    ourItemRemain: Int,
+    enemyItemRemain: Int,
+    pushesRemain: Int,
+    secondaryScore: Double
+): Double {
+    val gameEstimate = estimate[pushesRemain][ourItemRemain][enemyItemRemain]
+    return if (pushesRemain == 0) {
+        gameEstimate
+    } else if (secondaryScore > 0) {
+        var delta = estimate[pushesRemain][ourItemRemain - 1][enemyItemRemain] - gameEstimate
+        if (delta < 0) {
+            log("!!!Negative delta=$delta for positive secondary: [$pushesRemain][$ourItemRemain][$enemyItemRemain] ")
+            delta = 0.0
+        }
+        gameEstimate + delta * 0.5 * secondaryScore
+    } else if (secondaryScore < 0) {
+        var delta = gameEstimate - estimate[pushesRemain][ourItemRemain][enemyItemRemain - 1]
+        if (delta < 0) {
+            log("!!!Negative delta=$delta for negative secondary: [$pushesRemain][$ourItemRemain][$enemyItemRemain] ")
+            delta = 0.0
+        }
+        gameEstimate + delta * 0.5 * secondaryScore
+    } else {
+        gameEstimate
+    }
+}
+
 val a = Array<DoubleArray>(28) { DoubleArray(28) { 0.0 } } // interior[column][row]
 val stringBuilder = StringBuilder(10_000)
 
@@ -714,7 +743,7 @@ private fun selectPivotSolver(
     val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
             || (we.numPlayerCards == enemy.numPlayerCards && step < 50))
 
-    val pushRemain = (150 - step) / 2 - 1
+    val pushesRemain = (150 - step) / 2 - 1
     val prevEnemyPushes = prevPushesAtThisPosition?.map { it.enemyPush }
     val prevOurPushes = prevPushesAtThisPosition?.map { it.ourPush }
 
@@ -766,39 +795,22 @@ private fun selectPivotSolver(
             return 0.0
         }
 
-        val gameEstimate = estimate[pushRemain][ourItemRemain][enemyItemRemain]
-        if (pushRemain == 0) {
-            return gameEstimate
-        }
+        val secondaryScore = (pushOutItems(push) * 100 + space(push)).toDouble() / (34 * 100 + 48)
+        val gameEstimate = computeEstimate(ourItemRemain, enemyItemRemain, pushesRemain, secondaryScore)
 
-        val secondaryScore = pushOutItems(push) * 100 + space(push)
-        val result = if (secondaryScore > 0) {
-            var delta = estimate[pushRemain][ourItemRemain - 1][enemyItemRemain] - gameEstimate
-            if (delta < 0) {
-                log("!!!Negative delta=$delta for positive secondary: [$pushRemain][$ourItemRemain][$enemyItemRemain] ")
-                delta = 0.0
-            }
-            gameEstimate + delta * 0.5 * secondaryScore / (34 * 100 + 48)
-        } else if (secondaryScore < 0) {
-            var delta = gameEstimate - estimate[pushRemain][ourItemRemain][enemyItemRemain - 1]
-            if (delta < 0) {
-                log("!!!Negative delta=$delta for negative secondary: [$pushRemain][$ourItemRemain][$enemyItemRemain] ")
-                delta = 0.0
-            }
-            gameEstimate + delta * 0.5 * secondaryScore / (34 * 100 + 48)
-        } else {
-            gameEstimate
+        if (pushesRemain == 0) {
+            return gameEstimate
         }
         //todo use estimate[10 -numberOfDraws] instead of pow?
         if (numberOfDraws > 0 && push.pushes.collision()) {
             if (enemyItemRemain < ourItemRemain) {
-                return Math.pow(result, numberOfDraws.toDouble() + 1)
+                return Math.pow(gameEstimate, numberOfDraws.toDouble() + 1)
             } else if (enemyItemRemain == ourItemRemain && step < 50 && numberOfDraws > 1) {
-                return Math.pow(result, numberOfDraws.toDouble())
+                return Math.pow(gameEstimate, numberOfDraws.toDouble())
             }
         }
 
-        return result
+        return gameEstimate
     }
 
     val ourPushes = pushes.groupBy { it.pushes.ourPush }.keys.toList()
