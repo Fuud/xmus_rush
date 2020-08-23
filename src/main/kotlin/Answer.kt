@@ -187,14 +187,15 @@ val rand = Random(777)
 
 val moveDomains = Domains()
 val moveScores = Point.points.flatten()
-    .map { it to 0 }
+    .map { it to 0.0 }
     .toMap().toMutableMap()
-val movePushScores = Array(49) { IntArray(28) }
+val movePushScores = Array(49) { DoubleArray(28) }
 
 
 var lastBoard: GameBoard? = null
 var lastPush: OnePush? = null
 var numberOfDraws = 0
+var pushesRemain = 74
 
 fun performGame() {
     val globalStart = System.nanoTime()
@@ -217,6 +218,8 @@ fun performGame() {
         val allBoards = mutableMapOf<GameBoard, MutableSet<Pushes>>()
 
         repeat(150) { step ->
+            pushesRemain = (150 - step) / 2 - 1
+
             val start = System.nanoTime()
             log("step $step")
             BoardCache.reset()
@@ -364,7 +367,7 @@ private fun findBestMove(
     val ourNextQuests = ourQuests.and(itemsTaken.inv())
     val ends = paths.filter { Integer.bitCount(it.itemsTakenSet) == itemsTakenSize }
         .map { it.point }.toHashSet()
-    ends.forEach { moveScores[it] = 0 }
+    ends.forEach { moveScores[it] = 0.0 }
 
     val timeLimit = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
 
@@ -375,7 +378,7 @@ private fun findBestMove(
     }
     var count = 0
     for (p in ends) {
-        movePushScores[p.idx].fill(0)
+        movePushScores[p.idx].fill(0.0)
     }
     for (pushes in Pushes.allPushes) {
         if (System.nanoTime() - startTime > timeLimit && count > 0) {
@@ -397,22 +400,8 @@ private fun findBestMove(
         }
         moveDomains.clear()
         ends.forEach { point ->
-            var fake = Player(-1, -1, point.x, point.y)
-            val pushP = if (pushes.ourPush.direction.isVertical) {
-                fake =
-                    fake.push(pushes.enemyPush.direction, pushes.enemyPush.rowColumn)
-                fake = fake.push(pushes.ourPush.direction, pushes.ourPush.rowColumn)
-                fake.point
-            } else {
-                fake = fake.push(pushes.ourPush.direction, pushes.ourPush.rowColumn)
-                fake =
-                    fake.push(pushes.enemyPush.direction, pushes.enemyPush.rowColumn)
-                fake.point
-            }
-            val domain =
-                pushAndMove.board.findDomain(pushP, ourNextQuests, enemyQuests, moveDomains)
-            val score =
-                ((domain.getOurQuestsCount() * 16 + 12 * domain.ourItems * possibleQuestCoef) * 12 + domain.size).toInt()
+            val fake = we.copy(playerX = point.x, playerY = point.y).push(pushes)
+            val score = pushAndMove.copy(ourPlayer = fake).score
             moveScores[point] = moveScores[point]!! + score
             movePushScores[point.idx][pushes.ourPush.idx] += score
         }
@@ -464,20 +453,8 @@ fun tryFindEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: OnePush)
             if (draw) {
                 continue
             }
-
             val enemyPush = OnePush(enemyDirection, enemyRowColumn)
-            val sortedActions = listOf(ourPush, enemyPush).sortedByDescending { it.direction.priority }
-
-            var newBoard = fromBoard
-            sortedActions.forEach { push ->
-                val pushPlayer = if (push === enemyPush) {
-                    1
-                } else {
-                    0
-                }
-                val board = newBoard.push(pushPlayer, push.direction, push.rowColumn)
-                newBoard = board
-            }
+            val newBoard = fromBoard.push(Pushes(ourPush, enemyPush))
             if (newBoard == toBoard) {
                 return enemyPush
             }
@@ -656,6 +633,46 @@ data class PushAndMove(
     val ourSpace = ourDomain.size
     val enemyQuestCompleted = enemyDomain.getEnemyQuestsCount()
     val ourQuestCompleted = ourDomain.getOurQuestsCount()
+
+    val score: Double = this.let { push ->
+        val ourItemRemain = push.ourPlayer.numPlayerCards - push.ourQuestCompleted
+        val enemyItemRemain = push.enemyPlayer.numPlayerCards - push.enemyQuestCompleted
+        if (ourItemRemain == 0) {
+            if (enemyItemRemain == 0) {
+                val enemyPushToLastQuest = push.enemyPlayer.numPlayerCards == 1 &&
+                        push.board[push.enemyPlayer.point].item < 0
+                val ourPushToLastQuest = push.ourPlayer.numPlayerCards == 1 &&
+                        push.board[push.ourPlayer.point].item > 0
+                if (enemyPushToLastQuest.xor(ourPushToLastQuest)) {
+                    if (enemyPushToLastQuest) {
+                        return@let 0.0
+                    } else {
+                        return@let 1.0
+                    }
+                }
+                return@let 0.5
+            } else {
+                return@let 1.0
+            }
+        }
+        if (enemyItemRemain == 0) {
+            return@let 0.0
+        }
+
+        val secondaryScore = (pushOutItems(push) * 100 + space(push)).toDouble() / (34 * 100 + 48)
+        val gameEstimate = if (push.pushes.collision()) {
+            if (numberOfDraws == 0) {
+                computeEstimate(ourItemRemain, enemyItemRemain, Math.max(pushesRemain - 1, 0), secondaryScore)
+            } else {
+                computeEstimate(ourItemRemain, enemyItemRemain, 9 - numberOfDraws, secondaryScore)
+            }
+        } else {
+            computeEstimate(ourItemRemain, enemyItemRemain, pushesRemain, secondaryScore)
+        }
+
+        return@let gameEstimate
+    }
+
 }
 
 data class Action(val push: OnePush, val isEnemy: Boolean)
@@ -716,6 +733,9 @@ fun computeEstimate(
     pushesRemain: Int,
     secondaryScore: Double
 ): Double {
+    if (pushesRemain < 0){
+        return 0.0
+    }
     val gameEstimate = estimate[pushesRemain][ourItemRemain][enemyItemRemain]
     return if (pushesRemain == 0) {
         gameEstimate
@@ -755,7 +775,6 @@ private fun selectPivotSolver(
     val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
             || (we.numPlayerCards == enemy.numPlayerCards && step < 50))
 
-    val pushesRemain = (150 - step) / 2 - 1
     val prevEnemyPushes = prevPushesAtThisPosition?.map { it.enemyPush }
     val prevOurPushes = prevPushesAtThisPosition?.map { it.ourPush }
 
@@ -781,44 +800,6 @@ private fun selectPivotSolver(
         }
     }
 
-    fun score(push: PushAndMove): Double {
-        val ourItemRemain = push.ourPlayer.numPlayerCards - push.ourQuestCompleted
-        val enemyItemRemain = push.enemyPlayer.numPlayerCards - push.enemyQuestCompleted
-        if (ourItemRemain == 0) {
-            if (enemyItemRemain == 0) {
-                val enemyPushToLastQuest = push.enemyPlayer.numPlayerCards == 1 &&
-                        push.board[push.enemyPlayer.point].item < 0
-                val ourPushToLastQuest = push.ourPlayer.numPlayerCards == 1 &&
-                        push.board[push.ourPlayer.point].item > 0
-                if (enemyPushToLastQuest.xor(ourPushToLastQuest)) {
-                    if (enemyPushToLastQuest) {
-                        return 0.0
-                    } else {
-                        return 1.0
-                    }
-                }
-                return 0.5
-            } else {
-                return 1.0
-            }
-        }
-        if (enemyItemRemain == 0) {
-            return 0.0
-        }
-
-        val secondaryScore = (pushOutItems(push) * 100 + space(push)).toDouble() / (34 * 100 + 48)
-        val gameEstimate = if (push.pushes.collision()) {
-            if (numberOfDraws == 0) {
-                computeEstimate(ourItemRemain, enemyItemRemain, Math.max(pushesRemain - 1, 0), secondaryScore)
-            } else {
-                computeEstimate(ourItemRemain, enemyItemRemain, 9 - numberOfDraws, secondaryScore)
-            }
-        } else {
-            computeEstimate(ourItemRemain, enemyItemRemain, pushesRemain, secondaryScore)
-        }
-
-        return gameEstimate
-    }
 
     val ourPushes = pushes.groupBy { it.pushes.ourPush }.keys.toList()
     val OUR_SIZE = ourPushes.size
@@ -826,7 +807,7 @@ private fun selectPivotSolver(
     val ENEMY_SIZE = enemyPushes.size
 
     for (push in pushes) {
-        val score = score(push)
+        val score = push.score
         a[enemyPushes.indexOf(push.pushes.enemyPush)][ourPushes.indexOf(push.pushes.ourPush)] = score
     }
 
@@ -1078,31 +1059,9 @@ private fun pushAndMove(
     val draw =
         enemyRowColumn == rowColumn && (direction == enemyDirection || direction == enemyDirection.opposite)
 
-    val sortedActions = if (draw) {
-        emptyList()
-    } else {
-        listOf(
-            Action(OnePush(direction, rowColumn), isEnemy = false),
-            Action(OnePush(enemyDirection, enemyRowColumn), isEnemy = true)
-        ).sortedByDescending { it.push.direction.priority }
-    }
-
-    var newBoard = gameBoard
-    var ourPlayer = we
-    var enemyPlayer = enemy
-    sortedActions.forEach { (push, isEnemy) ->
-        val pushPlayer = if (isEnemy) enemyPlayer else ourPlayer
-        val board = newBoard.push(pushPlayer.playerId, push.direction, push.rowColumn)
-        newBoard = board
-        ourPlayer = ourPlayer.push(
-            push.direction,
-            push.rowColumn
-        )
-        enemyPlayer = enemyPlayer.push(
-            push.direction,
-            push.rowColumn
-        )
-    }
+    val ourPlayer = we.push(pushes)
+    val enemyPlayer = enemy.push(pushes)
+    val newBoard = gameBoard.push(pushes)
 
     val pushAndMove = PushAndMove(
         pushes = pushes,
@@ -1113,7 +1072,6 @@ private fun pushAndMove(
         enemyQuests = enemyQuests
     )
 
-//    comparePathsWithDomains(newBoard, ourPlayer, ourQuests, enemyPlayer, enemyQuests, pushAndMove)
     return pushAndMove
 }
 
@@ -1522,13 +1480,13 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
             val item = this[nextPoint].item
             pooledDomains[nextPoint] = domainId
             if (item > 0) {
-                if (ourQuestsSet[item]){
+                if (ourQuestsSet[item]) {
                     ourQuestsBits = ourQuestsBits.set(item)
                 }
                 ourItem++
             }
             if (item < 0) {
-                if (enemyQuestsSet[-item]){
+                if (enemyQuestsSet[-item]) {
                     enemyQuestsBits = enemyQuestsBits.set(-item)
                 }
                 enemyItem++
@@ -1651,45 +1609,123 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         return cachedPaths[player.playerId]!!
     }
 
-    fun push(playerId: Int, direction: Direction, rowColumn: Int): GameBoard {
-        val field = if (playerId == 0) ourField else enemyField
+    fun push(pushes: Pushes): GameBoard {
+        val firstPush = if (pushes.ourPush.direction.isVertical) {
+            pushes.enemyPush
+        } else {
+            pushes.ourPush
+        }
+        val secondPush = if (pushes.ourPush.direction.isVertical) {
+            pushes.ourPush
+        } else {
+            pushes.enemyPush
+        }
+        val firstPushIsEnemy = pushes.ourPush.direction.isVertical
+
+        var ourField = ourField
+        var enemyField = enemyField
+
         val newBoard = BoardCache.newBoard(board)
-        val newField: Field
-        val rows = bitBoard.rows.clone()
+
+        firstPush.run {
+            val isEnemy = firstPushIsEnemy
+            val field = if (isEnemy)  enemyField else ourField
+            val rows = bitBoard.rows.clone()
         val hands = bitBoard.hands.clone()
         if (direction == LEFT || direction == RIGHT) {
             if (direction == LEFT) {
-                newField = get(rowColumn, 0)
+                if (isEnemy) {
+                        enemyField = get(rowColumn, 0)
+                    }else{
+                        ourField = get(rowColumn, 0)
+                    }
                 newBoard[rowColumn * 7 + 6] = field
                 System.arraycopy(board, rowColumn * 7 + 1, newBoard, rowColumn * 7, 6)
                 BitBoard.pushLeft(rowColumn, rows, hands, playerId)
             } else {
-                newField = get(rowColumn, 6)
-                newBoard[rowColumn * 7 + 0] = field
+                if (isEnemy) {
+                        enemyField = get(rowColumn, 6)
+                    }else{
+                        ourField = get(rowColumn, 6)
+                    }newBoard[rowColumn * 7 + 0] = field
                 System.arraycopy(board, rowColumn * 7, newBoard, rowColumn * 7 + 1, 6)
                 BitBoard.pushRight(rowColumn, rows, hands, playerId)
-            }
-        } else {
-            if (direction == UP) {
-                newField = get(0, rowColumn)
-                newBoard[6 * 7 + rowColumn] = field
+                }
+            } else {
+                if (direction == UP) {
+                    if (isEnemy){
+                        enemyField = get(0, rowColumn)
+                    }else {
+                        ourField = get(0, rowColumn)
+                    }newBoard[6 * 7 + rowColumn] = field
                 for (y in (0..5)) {
                     newBoard[y * 7 + rowColumn] = get(y + 1, rowColumn)
                 }
                 BitBoard.pushUp(rowColumn, rows, hands, playerId)
             } else {
-                newField = get(6, rowColumn)
-                newBoard[0 * 7 + rowColumn] = field
-                for (y in (1..6)) {
-                    newBoard[y * 7 + rowColumn] = get(y - 1, rowColumn)
+                if (isEnemy){
+                        enemyField = get(6, rowColumn)
+                    }else {
+                        ourField = get(6, rowColumn)
+                    }
+                    newBoard[0 * 7 + rowColumn] = field
+                    for (y in (1..6)) {
+                        newBoard[y * 7 + rowColumn] = get(y - 1, rowColumn)
+                    }
+                }
+            }
+        }
+        secondPush.run {
+            val isEnemy = !firstPushIsEnemy
+            val field = if (isEnemy)  enemyField else ourField
+            if (direction == LEFT || direction == RIGHT) {
+                if (direction == LEFT) {
+                    if (isEnemy) {
+                        enemyField = get(rowColumn, 0)
+                    }else{
+                        ourField = get(rowColumn, 0)
+                    }
+                    newBoard[rowColumn * 7 + 6] = field
+                    System.arraycopy(board, rowColumn * 7 + 1, newBoard, rowColumn * 7, 6)
+                } else {
+                    if (isEnemy) {
+                        enemyField = get(rowColumn, 6)
+                    }else{
+                        ourField = get(rowColumn, 6)
+                    }
+                    newBoard[rowColumn * 7 + 0] = field
+                    System.arraycopy(board, rowColumn * 7, newBoard, rowColumn * 7 + 1, 6)
+                }
+            } else {
+                if (direction == UP) {
+                    if (isEnemy){
+                        enemyField = get(0, rowColumn)
+                    }else {
+                        ourField = get(0, rowColumn)
+                    }
+                    newBoard[6 * 7 + rowColumn] = field
+                    for (y in (0..5)) {
+                        newBoard[y * 7 + rowColumn] = get(y + 1, rowColumn)
+                    }
+                } else {
+                    if (isEnemy){
+                        enemyField = get(6, rowColumn)
+                    }else {
+                        ourField = get(6, rowColumn)
+                    }
+                    newBoard[0 * 7 + rowColumn] = field
+                    for (y in (1..6)) {
+                        newBoard[y * 7 + rowColumn] = get(y - 1, rowColumn)
+                    }
+                }
                 }
                 BitBoard.pushDown(rowColumn, rows, hands, playerId)
-            }
+
         }
         val result = GameBoard(
             board = newBoard,
-            ourField = if (playerId == 0) newField else ourField,
-            enemyField = if (playerId == 1) newField else enemyField
+            ourField = ourField,
+            enemyField = enemyField
         )
         val newBitBoard = BitBoard(rows, hands)
         if (!result.bitBoard.rows.contentEquals(newBitBoard.rows)
@@ -1874,21 +1910,48 @@ data class Player(
 
     val point: Point = Point.point(playerX, playerY)
 
-    fun push(direction: Direction, rowColumn: Int): Player {
-        return if (direction == UP || direction == DOWN) {
-            if (playerX != rowColumn) {
-                this
-            } else {
-                val newPlayerY = (playerY + (if (direction == UP) -1 else 1) + 7) % 7
-                return copy(playerY = newPlayerY)
-            }
+    fun push(pushes: Pushes): Player {
+        var x = playerX
+        var y = playerY
+        val firstPush = if (pushes.ourPush.direction.isVertical) {
+            pushes.enemyPush
         } else {
-            if (playerY != rowColumn) {
-                this
+            pushes.ourPush
+        }
+        val secondPush = if (pushes.ourPush.direction.isVertical) {
+            pushes.ourPush
+        } else {
+            pushes.enemyPush
+        }
+
+        firstPush.run {
+            if (direction.isVertical) {
+                if (x == rowColumn) {
+                    y = (y + (if (direction == UP) -1 else 1) + 7) % 7
+                }
             } else {
-                val newPlayerX = (playerX + (if (direction == LEFT) -1 else 1) + 7) % 7
-                return copy(playerX = newPlayerX)
+                if (y == rowColumn) {
+                    x = (x + (if (direction == LEFT) -1 else 1) + 7) % 7
+                }
             }
+        }
+
+        secondPush.run {
+            if (direction.isVertical) {
+                if (x == rowColumn) {
+                    y = (y + (if (direction == UP) -1 else 1) + 7) % 7
+                }
+            } else {
+                if (y == rowColumn) {
+                    x = (x + (if (direction == LEFT) -1 else 1) + 7) % 7
+                }
+            }
+        }
+
+        return if (x != playerX || y != playerY) {
+            copy(playerX = x, playerY = y)
+        } else {
+            this
         }
     }
 }

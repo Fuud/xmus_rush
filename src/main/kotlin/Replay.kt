@@ -79,12 +79,16 @@ object Replay {
                 contentType(ContentType.Application.Json)
             }
 
+            val names = gameInfo.agents.map { it.index to it.codingamer.pseudo }.toMap()
+
+            val rendered = gameInfo.copy(frames = gameInfo.frames.map { it.copy(summary = it.summary?.replace("\$0", names[0]!!)?.replace("\$1", names[1]!!)) })
+
             val stdError = gameInfoToInput(gameInfo)
             File("replays/$replayId.raw.txt").apply {
                 parentFile.mkdirs()
                 writeText(stdError)
             }
-            ymlMapper.writeValue(File("replays/$replayId.yml"), gameInfo)
+            ymlMapper.writeValue(File("replays/$replayId.yml"), rendered)
             val filtered = stdError.lineSequence().filterNot { it.startsWith("#") }.joinToString(separator = "\n")
             File("replays/$replayId.txt").writeText(filtered)
             return@runBlocking filtered
