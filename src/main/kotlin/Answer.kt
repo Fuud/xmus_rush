@@ -1413,11 +1413,15 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
             val item = this[nextPoint].item
             pooledDomains[nextPoint] = domainId
             if (item > 0) {
-                ourQuestsBits = ourQuestsBits.set(item)
+                if (ourQuestsSet[item]){
+                    ourQuestsBits = ourQuestsBits.set(item)
+                }
                 ourItem++
             }
             if (item < 0) {
-                enemyQuestsBits = enemyQuestsBits.set(-item)
+                if (enemyQuestsSet[-item]){
+                    enemyQuestsBits = enemyQuestsBits.set(-item)
+                }
                 enemyItem++
             }
             for (i in (0..3)) {

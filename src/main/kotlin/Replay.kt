@@ -24,29 +24,32 @@ val ymlMapper = ObjectMapper(YAMLFactory().apply {
     this.registerModule(KotlinModule())
     this.writerWithDefaultPrettyPrinter()
 }
+
 object Replay {
     val userId = 3871137
     val login = "fuudtorrentsru@gmail.com"
     val password = System.getProperty("password")!!
 
-    val httpClient = HttpClient(Apache) {
-        install(HttpCookies)
+    val httpClient: HttpClient by lazy {
+        HttpClient(Apache) {
+            install(HttpCookies)
 
-        install(JsonFeature) {
-            serializer = JacksonSerializer()
-        }
-    }.apply {
-        runBlocking {
-            this@apply.post<kotlin.Unit>("https://www.codingame.com/services/CodingamerRemoteService/loginSiteV2") {
-                body = kotlin.collections.listOf(login, password, true)
-                contentType(io.ktor.http.ContentType.Application.Json)
+            install(JsonFeature) {
+                serializer = JacksonSerializer()
+            }
+        }.apply {
+            runBlocking {
+                this@apply.post<kotlin.Unit>("https://www.codingame.com/services/CodingamerRemoteService/loginSiteV2") {
+                    body = kotlin.collections.listOf(login, password, true)
+                    contentType(io.ktor.http.ContentType.Application.Json)
+                }
             }
         }
     }
 
     @JvmStatic
     fun main(args: Array<String>) {
-        val replayId = "483074046"
+        val replayId = "483193444"
 
         val replayFile = File("replays/$replayId.txt")
 
@@ -118,7 +121,7 @@ data class Frame(
 //    val view: String? = null,
     val keyframe: String? = null,
     val agentId: String? = null
-){
+) {
 
 }
 
