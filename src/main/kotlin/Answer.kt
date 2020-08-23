@@ -1685,7 +1685,7 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
                     } else {
                         ourField = get(newBoard,6, rowColumn)
                     }
-                    for (y in (1..6)) {
+                    for (y in (6 downTo 1)) {
                         newBoard[y * 7 + rowColumn] = get(newBoard,y - 1, rowColumn)
                     }
                     newBoard[0 * 7 + rowColumn] = field
