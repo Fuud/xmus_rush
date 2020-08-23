@@ -1,5 +1,6 @@
 @file:Suppress("NAME_SHADOWING", "UnnecessaryVariable")
 
+import BitField.Companion.bitField
 import Direction.*
 import Items.NO_ITEM
 import PushSelectors.itemsCountDiff
@@ -728,7 +729,7 @@ fun computeEstimate(
     pushesRemain: Int,
     secondaryScore: Double
 ): Double {
-    if (pushesRemain < 0){
+    if (pushesRemain < 0) {
         return 0.0
     }
     val gameEstimate = estimate[pushesRemain][ourItemRemain][enemyItemRemain]
@@ -1246,15 +1247,20 @@ data class Field(
     val item: Int
 )
 
-data class BitField(val bits: Long) {
+data class BitField private constructor(val bits: Long) {
     companion object {
         val TILE_MASK: Long = 0b000001111
         val ITEM_MASK: Long = 0b111110000
         val NO_ITEM: Long = 12.shl(4)
+        val cache = Array(size = (TILE_MASK or ITEM_MASK).toInt()) {
+            BitField(it.toLong())
+        }
 
         fun connected(field1: Long, direction: Direction, field2: Long): Boolean {
             return field1.and(direction.mask) != 0L && field2.and(direction.opposite.mask) != 0L
         }
+
+        fun bitField(bits: Long): BitField = cache[bits.toInt()]
     }
 
     fun connected(field: BitField, direction: Direction): Boolean {
@@ -1410,15 +1416,15 @@ data class BitBoard(val rows: LongArray, val hands: LongArray) {
         }
     }
 
-    fun get(y: Int, x: Int) = BitField(getField(y, x))
+    fun get(y: Int, x: Int) = bitField(getField(y, x))
     operator fun get(point: Point) = get(point.y, point.x)
 
     fun ourField(): BitField {
-        return BitField(hands[0])
+        return bitField(hands[0])
     }
 
     fun enemyField(): BitField {
-        return BitField(hands[1])
+        return bitField(hands[1])
     }
 
     private fun getField(y: Int, x: Int): Long {
@@ -1635,7 +1641,7 @@ data class GameBoard(val bitBoard: BitBoard) {
     }
 
     fun push(pushes: Pushes): GameBoard {
-        if (pushes.collision()){
+        if (pushes.collision()) {
             return this
         }
         val firstPush = if (pushes.ourPush.direction.isVertical) {
