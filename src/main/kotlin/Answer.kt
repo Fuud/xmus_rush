@@ -425,7 +425,7 @@ private fun findBestMove(
             0
         }
     }.thenComparing { pathElem ->
-        Integer.bitCount(gameBoard.bitBoard[pathElem.point].tile())
+        Integer.bitCount(gameBoard.bitBoard[pathElem.point].tile)
     }
     val pathsComparator = compareBy<PathElem> { pathElem ->
         Integer.bitCount(pathElem.itemsTakenSet)
@@ -636,9 +636,9 @@ data class PushAndMove(
         if (ourItemRemain == 0) {
             if (enemyItemRemain == 0) {
                 val enemyPushToLastQuest = push.enemyPlayer.numPlayerCards == 1 &&
-                        push.board[push.enemyPlayer.point].item() < 0
+                        push.board[push.enemyPlayer.point].item < 0
                 val ourPushToLastQuest = push.ourPlayer.numPlayerCards == 1 &&
-                        push.board[push.ourPlayer.point].item() > 0
+                        push.board[push.ourPlayer.point].item > 0
                 if (enemyPushToLastQuest.xor(ourPushToLastQuest)) {
                     if (enemyPushToLastQuest) {
                         return@let 0.0
@@ -1175,7 +1175,7 @@ object PushSelectors {
 
     private fun pushOutItems(push: PushAndMove, playerId: Int, quests: Int): Int {
         fun BitField.holdOurQuestItem(playerId: Int, quests: Int): Boolean {
-            val item = this.item()
+            val item = this.item
             return if (playerId == 0 && item > 0) {
                 quests[item]
             } else if (playerId == 1 && item < 0) {
@@ -1268,7 +1268,6 @@ data class BitField private constructor(val bits: Long) {
     }
 
     fun containsQuestItem(playerId: Int, questsSet: Int): Boolean {
-        val item = item()
         return if (questsSet[item.absoluteValue]) {
             if (playerId == 0 && item > 0) {
                 true
@@ -1278,13 +1277,9 @@ data class BitField private constructor(val bits: Long) {
         }
     }
 
-    fun item(): Int {
-        return (bits.shr(4) - 12).toInt()
-    }
+    val item =  (bits.shr(4) - 12).toInt()
 
-    fun tile(): Int {
-        return bits.and(TILE_MASK).toInt()
-    }
+    val tile = bits.and(TILE_MASK).toInt()
 }
 
 private operator fun Int.get(index: Int): Boolean {
@@ -1506,7 +1501,7 @@ data class GameBoard(val bitBoard: BitBoard) {
         while (pooledFront.isNotEmpty()) {
             val nextPoint = pooledFront.removeAt(pooledFront.size - 1)
             size++
-            val item = bitBoard[nextPoint].item()
+            val item = bitBoard[nextPoint].item
             pooledDomains[nextPoint] = domainId
             if (item > 0) {
                 if (ourQuestsSet[item]) {
@@ -1578,7 +1573,7 @@ data class GameBoard(val bitBoard: BitBoard) {
                 return (((x * 7 + y) * 2 + firstItem) * 2 + secondItem) * 2 + thirdItem
             }
 
-            val initialItem = bitBoard[player.point].item()
+            val initialItem = bitBoard[player.point].item
             val initial =
                 if (initialItem > 0 && quests[initialItem]) {
                     PathElem(player.point, 0.set(initialItem), null, null)
@@ -1613,7 +1608,7 @@ data class GameBoard(val bitBoard: BitBoard) {
                             continue
                         }
                         val newPoint = pathElem.point.move(direction)
-                        val item = bitBoard[newPoint].item()
+                        val item = bitBoard[newPoint].item
                         val newItems = if (item > 0 && quests[item]) {
                             pathElem.itemsTakenSet.set(item)
                         } else {
