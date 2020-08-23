@@ -1651,8 +1651,8 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
                     } else {
                         ourField = get(newBoard,rowColumn, 0)
                     }
-                    newBoard[rowColumn * 7 + 6] = field
                     System.arraycopy(board, rowColumn * 7 + 1, newBoard, rowColumn * 7, 6)
+                    newBoard[rowColumn * 7 + 6] = field
                     BitBoard.pushLeft(rowColumn, rows, hands, playerId)
                 } else {
                     if (isEnemy) {
@@ -1660,8 +1660,8 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
                     } else {
                         ourField = get(newBoard,rowColumn, 6)
                     }
-                    newBoard[rowColumn * 7 + 0] = field
                     System.arraycopy(board, rowColumn * 7, newBoard, rowColumn * 7 + 1, 6)
+                    newBoard[rowColumn * 7 + 0] = field
                     BitBoard.pushRight(rowColumn, rows, hands, playerId)
                 }
             } else {
@@ -1671,10 +1671,10 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
                     } else {
                         ourField = get(newBoard,0, rowColumn)
                     }
-                    newBoard[6 * 7 + rowColumn] = field
                     for (y in (0..5)) {
                         newBoard[y * 7 + rowColumn] = get(newBoard,y + 1, rowColumn)
                     }
+                    newBoard[6 * 7 + rowColumn] = field
                     BitBoard.pushUp(rowColumn, rows, hands, playerId)
                 } else {
                     if (isEnemy) {
@@ -1682,10 +1682,10 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
                     } else {
                         ourField = get(newBoard,6, rowColumn)
                     }
-                    newBoard[0 * 7 + rowColumn] = field
                     for (y in (1..6)) {
                         newBoard[y * 7 + rowColumn] = get(newBoard,y - 1, rowColumn)
                     }
+                    newBoard[0 * 7 + rowColumn] = field
                     BitBoard.pushDown(rowColumn, rows, hands, playerId)
                 }
             }
@@ -1701,8 +1701,8 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
                     }else{
                         ourField = get(newBoard,rowColumn, 0)
                     }
-                    newBoard[rowColumn * 7 + 6] = field
                     System.arraycopy(newBoard, rowColumn * 7 + 1, newBoard, rowColumn * 7, 6)
+                    newBoard[rowColumn * 7 + 6] = field
                     BitBoard.pushLeft(rowColumn, rows, hands, playerId)
                 } else {
                     if (isEnemy) {
@@ -1710,8 +1710,8 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
                     }else{
                         ourField = get(newBoard,rowColumn, 6)
                     }
-                    newBoard[rowColumn * 7 + 0] = field
                     System.arraycopy(newBoard, rowColumn * 7, newBoard, rowColumn * 7 + 1, 6)
+                    newBoard[rowColumn * 7 + 0] = field
                     BitBoard.pushRight(rowColumn, rows, hands, playerId)
                 }
             } else {
@@ -1721,10 +1721,10 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
                     }else {
                         ourField = get(newBoard,0, rowColumn)
                     }
-                    newBoard[6 * 7 + rowColumn] = field
                     for (y in (0..5)) {
                         newBoard[y * 7 + rowColumn] = get(newBoard,y + 1, rowColumn)
                     }
+                    newBoard[6 * 7 + rowColumn] = field
                     BitBoard.pushUp(rowColumn, rows, hands, playerId)
                 } else {
                     if (isEnemy){
@@ -1732,10 +1732,10 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
                     }else {
                         ourField = get(newBoard,6, rowColumn)
                     }
-                    newBoard[0 * 7 + rowColumn] = field
-                    for (y in (1..6)) {
+                    for (y in (6 downTo 1)) {
                         newBoard[y * 7 + rowColumn] = get(newBoard,y - 1, rowColumn)
                     }
+                    newBoard[0 * 7 + rowColumn] = field
                     BitBoard.pushDown(rowColumn, rows, hands, playerId)
                 }
             }
