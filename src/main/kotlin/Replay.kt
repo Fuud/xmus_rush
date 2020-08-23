@@ -127,7 +127,19 @@ data class Frame(
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class Game(
-    val frames: List<Frame>
+    val frames: List<Frame>,
+    val agents: List<Agent>
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class Agent(
+    val index: Int,
+    val codingamer: Codingamer
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class Codingamer(
+    val pseudo: String
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
