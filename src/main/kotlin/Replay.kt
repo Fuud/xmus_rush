@@ -184,11 +184,15 @@ object CountStop {
             .filter { it.extension == "yml" }
             .flatMap { file ->
                 val firstLine = file.readLines().indexOfFirst { it.contains("step 1") }
-                file.readLines()
-                    .drop(firstLine)
-                    .mapIndexed { index, line -> "${file.name}:${index + firstLine}" to line }
-                    .filter { it.second.contains("stop computePushes") }
-                    .map { (descr, line) -> descr to line}
+                if (firstLine < 0) {
+                    emptyList<Pair<String, String>>()
+                } else {
+                    file.readLines()
+                        .drop(firstLine)
+                        .mapIndexed { index, line -> "${file.name}:${index + firstLine}" to line }
+                        .filter { it.second.contains("stop computePushes") }
+                        .map { (descr, line) -> descr to line }
+                }
             }
             .sortedByDescending { it.second }
             .forEach {
