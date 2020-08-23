@@ -413,8 +413,7 @@ private fun findBestMove(
     }.thenComparing { pathElem ->
         max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
     }.thenComparing { pathElem ->
-        val ourField = gameBoard.ourField
-        if (ourField.containsQuestItem(we.playerId, ourQuests)) {
+        if (gameBoard.bitBoard.ourField().containsQuestItem(we.playerId, ourQuests)) {
             val (x, y) = pathElem.point
             if ((x == 0 || x == 6) && (y == 0 || y == 6)) {
                 1
@@ -425,7 +424,7 @@ private fun findBestMove(
             0
         }
     }.thenComparing { pathElem ->
-        gameBoard[pathElem.point].tile.roads
+        Integer.bitCount(gameBoard.bitBoard[pathElem.point].tile())
     }
     val pathsComparator = compareBy<PathElem> { pathElem ->
         Integer.bitCount(pathElem.itemsTakenSet)
@@ -522,11 +521,7 @@ private fun readInput(input: Scanner): InputConditions {
             items.singleOrNull { it.itemX == x && it.itemY == y }?.toItem() ?: NO_ITEM
         )
     }
-    val gameBoard = GameBoard(
-        boardArray,
-        ourField,
-        enemyField
-    )
+    val gameBoard = GameBoard(BitBoard.newInstance(boardArray, ourField, enemyField))
 
     var ourQuestsSet = 0
     ourQuests.forEach {
@@ -626,8 +621,8 @@ data class PushAndMove(
 
     private val ourDomain = board.findDomain(ourPlayer.point, ourQuests, enemyQuests, pooledDomains)
     private val enemyDomain = board.findDomain(enemyPlayer.point, ourQuests, enemyQuests, pooledDomains)
-    val ourFieldOnHand = board.ourField
-    val enemyFieldOnHand = board.enemyField
+    val ourFieldOnHand = board.bitBoard.ourField()
+    val enemyFieldOnHand = board.bitBoard.enemyField()
 
     val enemySpace = enemyDomain.size
     val ourSpace = ourDomain.size
@@ -640,9 +635,9 @@ data class PushAndMove(
         if (ourItemRemain == 0) {
             if (enemyItemRemain == 0) {
                 val enemyPushToLastQuest = push.enemyPlayer.numPlayerCards == 1 &&
-                        push.board[push.enemyPlayer.point].item < 0
+                        push.board[push.enemyPlayer.point].item() < 0
                 val ourPushToLastQuest = push.ourPlayer.numPlayerCards == 1 &&
-                        push.board[push.ourPlayer.point].item > 0
+                        push.board[push.ourPlayer.point].item() > 0
                 if (enemyPushToLastQuest.xor(ourPushToLastQuest)) {
                     if (enemyPushToLastQuest) {
                         return@let 0.0
@@ -1056,8 +1051,6 @@ private fun pushAndMove(
     val enemyRowColumn = pushes.enemyPush.rowColumn
     val direction = pushes.ourPush.direction
     val rowColumn = pushes.ourPush.rowColumn
-    val draw =
-        enemyRowColumn == rowColumn && (direction == enemyDirection || direction == enemyDirection.opposite)
 
     val ourPlayer = we.push(pushes)
     val enemyPlayer = enemy.push(pushes)
@@ -1180,11 +1173,12 @@ object PushSelectors {
     }
 
     private fun pushOutItems(push: PushAndMove, playerId: Int, quests: Int): Int {
-        fun Field.holdOurQuestItem(playerId: Int, quests: Int): Boolean {
-            return if (playerId == 0 && this.item > 0) {
-                quests[this.item]
-            } else if (playerId == 1 && this.item < 0) {
-                quests[-this.item]
+        fun BitField.holdOurQuestItem(playerId: Int, quests: Int): Boolean {
+            val item = this.item()
+            return if (playerId == 0 && item > 0) {
+                quests[item]
+            } else if (playerId == 1 && item < 0) {
+                quests[-item]
             } else {
                 false
             }
@@ -1206,7 +1200,7 @@ object PushSelectors {
         //todo 3 queries are better than 49 ones
         for (y in (0..6)) {
             for (x in (0..6)) {
-                if (push.board.get(y, x).holdOurQuestItem(playerId, quests)) {
+                if (push.board.bitBoard.get(y, x).holdOurQuestItem(playerId, quests)) {
                     otherItemsScore += max(abs(3 - x), abs(3 - y)) * max(abs(3 - x), abs(3 - y))
                 }
             }
@@ -1250,17 +1244,7 @@ class BoardDto(val board: List<List<Tile>>) {
 data class Field(
     val tile: Tile,
     val item: Int
-) {
-       fun containsQuestItem(playerId: Int, questsSet: Int): Boolean {
-        return if (questsSet[item.absoluteValue]) {
-            if (playerId == 0 && item > 0) {
-                true
-            } else playerId == 1 && item < 0
-        } else {
-            false
-        }
-    }
-}
+)
 
 data class BitField(val bits: Long) {
     companion object {
@@ -1291,6 +1275,10 @@ data class BitField(val bits: Long) {
     fun item(): Int {
         return (bits.shr(4) - 12).toInt()
     }
+
+    fun tile(): Int {
+        return bits.and(TILE_MASK).toInt()
+    }
 }
 
 private operator fun Int.get(index: Int): Boolean {
@@ -1310,7 +1298,6 @@ data class DomainInfo(
 ) {
     companion object {
         val empty = DomainInfo(0, 0, 0, 0, 0)
-        val bits2Count: IntArray = intArrayOf(0, 1, 1, 2, 1, 2, 2, 3)
     }
 
     fun getOurQuestsCount(): Int {
@@ -1423,6 +1410,17 @@ data class BitBoard(val rows: LongArray, val hands: LongArray) {
         }
     }
 
+    fun get(y: Int, x: Int) = BitField(getField(y, x))
+    operator fun get(point: Point) = get(point.y, point.x)
+
+    fun ourField(): BitField {
+        return BitField(hands[0])
+    }
+
+    fun enemyField(): BitField {
+        return BitField(hands[1])
+    }
+
     private fun getField(y: Int, x: Int): Long {
         return rows[y].and(MASK[x]).shr((6 - x) * 9)
     }
@@ -1433,7 +1431,7 @@ data class BitBoard(val rows: LongArray, val hands: LongArray) {
     fun canLeft(x: Int, y: Int) = (x > 0) && BitField.connected(getField(y, x), LEFT, getField(y, x - 1))
 
     override fun toString(): String {
-        return (0..6).joinToString(separator = "\n") {y ->
+        return (0..6).joinToString(separator = "\n") { y ->
             (0..6).joinToString(separator = " ") { x ->
                 val field = getField(y, x)
                 (field and BitField.TILE_MASK).toString(2).padStart(4, '0')
@@ -1441,12 +1439,29 @@ data class BitBoard(val rows: LongArray, val hands: LongArray) {
         }
     }
 
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as BitBoard
+
+        if (!rows.contentEquals(other.rows)) return false
+        if (!hands.contentEquals(other.hands)) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = rows.contentHashCode()
+        result = 31 * result + hands.contentHashCode()
+        return result
+    }
+
 
 }
 
-data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyField: Field) {
+data class GameBoard(val bitBoard: BitBoard) {
     private val cachedPaths = arrayOfNulls<MutableList<PathElem>>(2)
-    private val bitBoard = BitBoard.newInstance(board, ourField, enemyField)
 
     companion object {
         val pooledList1 = arrayListOf<PathElem>()
@@ -1455,10 +1470,6 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         val visitedPoints = BitSet(50)
         val pooledFront: MutableList<Point> = ArrayList(50)
     }
-
-    fun get(y: Int, x: Int) =board[y * 7 + x]
-    fun get(theBoard :Array<Field>,y: Int, x: Int)=theBoard[y * 7 + x]
-    operator fun get(point: Point) = get(point.y, point.x)
 
     fun findDomain(
         point: Point,
@@ -1489,7 +1500,7 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         while (pooledFront.isNotEmpty()) {
             val nextPoint = pooledFront.removeAt(pooledFront.size - 1)
             size++
-            val item = this[nextPoint].item
+            val item = bitBoard[nextPoint].item()
             pooledDomains[nextPoint] = domainId
             if (item > 0) {
                 if (ourQuestsSet[item]) {
@@ -1528,6 +1539,8 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         return domain
     }
 
+    operator fun get(point: Point) = bitBoard[point]
+
     fun findPaths(player: Player, quests: Int): List<PathElem> {
         if (cachedPaths[player.playerId] == null) {
             fun coordInVisited(newPoint: Point, newItemsSet: Int): Int {
@@ -1559,7 +1572,7 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
                 return (((x * 7 + y) * 2 + firstItem) * 2 + secondItem) * 2 + thirdItem
             }
 
-            val initialItem = this[player.point].item
+            val initialItem = bitBoard[player.point].item()
             val initial =
                 if (initialItem > 0 && quests[initialItem]) {
                     PathElem(player.point, 0.set(initialItem), null, null)
@@ -1594,7 +1607,7 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
                             continue
                         }
                         val newPoint = pathElem.point.move(direction)
-                        val item = this[newPoint].item
+                        val item = bitBoard[newPoint].item()
                         val newItems = if (item > 0 && quests[item]) {
                             pathElem.itemsTakenSet.set(item)
                         } else {
@@ -1637,58 +1650,21 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         }
         val firstPushIsEnemy = pushes.ourPush.direction.isVertical
 
-        var ourField = ourField
-        var enemyField = enemyField
-
-        val newBoard = BoardCache.newBoard(board)
         val rows = bitBoard.rows.clone()
         val hands = bitBoard.hands.clone()
         firstPush.run {
             val isEnemy = firstPushIsEnemy
             val playerId = if (isEnemy) 1 else 0
-            val field = if (isEnemy) enemyField else ourField
             if (direction == LEFT || direction == RIGHT) {
                 if (direction == LEFT) {
-                    if (isEnemy) {
-                        enemyField = get(newBoard,rowColumn, 0)
-                    } else {
-                        ourField = get(newBoard,rowColumn, 0)
-                    }
-                    System.arraycopy(board, rowColumn * 7 + 1, newBoard, rowColumn * 7, 6)
-                    newBoard[rowColumn * 7 + 6] = field
                     BitBoard.pushLeft(rowColumn, rows, hands, playerId)
                 } else {
-                    if (isEnemy) {
-                        enemyField = get(newBoard,rowColumn, 6)
-                    } else {
-                        ourField = get(newBoard,rowColumn, 6)
-                    }
-                    System.arraycopy(board, rowColumn * 7, newBoard, rowColumn * 7 + 1, 6)
-                    newBoard[rowColumn * 7 + 0] = field
                     BitBoard.pushRight(rowColumn, rows, hands, playerId)
                 }
             } else {
                 if (direction == UP) {
-                    if (isEnemy) {
-                        enemyField = get(newBoard,0, rowColumn)
-                    } else {
-                        ourField = get(newBoard,0, rowColumn)
-                    }
-                    for (y in (0..5)) {
-                        newBoard[y * 7 + rowColumn] = get(newBoard,y + 1, rowColumn)
-                    }
-                    newBoard[6 * 7 + rowColumn] = field
                     BitBoard.pushUp(rowColumn, rows, hands, playerId)
                 } else {
-                    if (isEnemy) {
-                        enemyField = get(newBoard,6, rowColumn)
-                    } else {
-                        ourField = get(newBoard,6, rowColumn)
-                    }
-                    for (y in (6 downTo 1)) {
-                        newBoard[y * 7 + rowColumn] = get(newBoard,y - 1, rowColumn)
-                    }
-                    newBoard[0 * 7 + rowColumn] = field
                     BitBoard.pushDown(rowColumn, rows, hands, playerId)
                 }
             }
@@ -1696,67 +1672,23 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         secondPush.run {
             val isEnemy = !firstPushIsEnemy
             val playerId = if (isEnemy) 1 else 0
-            val field = if (isEnemy) enemyField else ourField
             if (direction == LEFT || direction == RIGHT) {
                 if (direction == LEFT) {
-                    if (isEnemy) {
-                        enemyField = get(newBoard,rowColumn, 0)
-                    }else{
-                        ourField = get(newBoard,rowColumn, 0)
-                    }
-                    System.arraycopy(newBoard, rowColumn * 7 + 1, newBoard, rowColumn * 7, 6)
-                    newBoard[rowColumn * 7 + 6] = field
                     BitBoard.pushLeft(rowColumn, rows, hands, playerId)
                 } else {
-                    if (isEnemy) {
-                        enemyField = get(newBoard,rowColumn, 6)
-                    }else{
-                        ourField = get(newBoard,rowColumn, 6)
-                    }
-                    System.arraycopy(newBoard, rowColumn * 7, newBoard, rowColumn * 7 + 1, 6)
-                    newBoard[rowColumn * 7 + 0] = field
                     BitBoard.pushRight(rowColumn, rows, hands, playerId)
                 }
             } else {
                 if (direction == UP) {
-                    if (isEnemy){
-                        enemyField = get(newBoard,0, rowColumn)
-                    }else {
-                        ourField = get(newBoard,0, rowColumn)
-                    }
-                    for (y in (0..5)) {
-                        newBoard[y * 7 + rowColumn] = get(newBoard,y + 1, rowColumn)
-                    }
-                    newBoard[6 * 7 + rowColumn] = field
                     BitBoard.pushUp(rowColumn, rows, hands, playerId)
                 } else {
-                    if (isEnemy){
-                        enemyField = get(newBoard,6, rowColumn)
-                    }else {
-                        ourField = get(newBoard,6, rowColumn)
-                    }
-                    for (y in (6 downTo 1)) {
-                        newBoard[y * 7 + rowColumn] = get(newBoard,y - 1, rowColumn)
-                    }
-                    newBoard[0 * 7 + rowColumn] = field
                     BitBoard.pushDown(rowColumn, rows, hands, playerId)
                 }
             }
         }
-        val result = GameBoard(
-            board = newBoard,
-            ourField = ourField,
-            enemyField = enemyField
-        )
-        val newBitBoard = BitBoard(rows, hands)
-        if (!result.bitBoard.rows.contentEquals(newBitBoard.rows)
-            || !result.bitBoard.hands.contentEquals(newBitBoard.hands)
-        ) {
-            println("ALARME!!!!")
-        }
-        return result
-    }
 
+        return GameBoard(BitBoard(rows, hands))
+    }
 
     private fun Point.can(direction: Direction) = when (direction) {
         UP -> canUp(this)
@@ -1769,26 +1701,6 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
     private fun canRight(point: Point) = bitBoard.canRight(point.x, point.y)
     private fun canDown(point: Point) = bitBoard.canDown(point.x, point.y)
     private fun canLeft(point: Point) = bitBoard.canLeft(point.x, point.y)
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as GameBoard
-
-        if (!board.contentEquals(other.board)) return false
-        if (ourField != other.ourField) return false
-        if (enemyField != other.enemyField) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = board.contentHashCode()
-        result = 31 * result + ourField.hashCode()
-        result = 31 * result + enemyField.hashCode()
-        return result
-    }
 }
 
 private fun Int.nextSetBit(fromIndex: Int): Int {
