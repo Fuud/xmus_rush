@@ -1431,6 +1431,17 @@ data class BitBoard(val rows: LongArray, val hands: LongArray) {
     fun canRight(x: Int, y: Int) = (x < 6) && BitField.connected(getField(y, x), RIGHT, getField(y, x + 1))
     fun canDown(x: Int, y: Int) = (y < 6) && BitField.connected(getField(y, x), DOWN, getField(y + 1, x))
     fun canLeft(x: Int, y: Int) = (x > 0) && BitField.connected(getField(y, x), LEFT, getField(y, x - 1))
+
+    override fun toString(): String {
+        return (0..6).joinToString(separator = "\n") {y ->
+            (0..6).joinToString(separator = " ") { x ->
+                val field = getField(y, x)
+                (field and BitField.TILE_MASK).toString(2).padStart(4, '0')
+            }
+        }
+    }
+
+
 }
 
 data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyField: Field) {
