@@ -733,6 +733,9 @@ fun computeEstimate(
     pushesRemain: Int,
     secondaryScore: Double
 ): Double {
+    if (pushesRemain < 0){
+        return 0.0
+    }
     val gameEstimate = estimate[pushesRemain][ourItemRemain][enemyItemRemain]
     return if (pushesRemain == 0) {
         gameEstimate
