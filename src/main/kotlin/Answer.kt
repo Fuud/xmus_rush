@@ -1,7 +1,6 @@
 @file:Suppress("NAME_SHADOWING", "UnnecessaryVariable")
 
 import Direction.*
-import Item.Companion.questMask
 import Items.NO_ITEM
 import PushSelectors.itemsCountDiff
 import PushSelectors.pushOutItems
@@ -1367,6 +1366,64 @@ class Domains {
 
 }
 
+data class BitBoard(val rows: LongArray, val hands: LongArray) {
+    companion object {
+        val TILE_MASK: Long = 0b000001111
+        val ITEM_MASK: Long = 0b011110000
+        val PLAY_MASK: Long = 0b100000000
+        val FIELD_MASK: Long = 0b111111111
+        val MASK: LongArray = (0..6).map { FIELD_MASK.shl((6 - it) * 9) }.toLongArray()
+
+        fun pushRight(idx: Int, player: Player, rows: LongArray, hands: LongArray) {
+            val row = rows[idx]
+            val hand = hands[player.playerId]
+            val mask = MASK[6]
+            val newHand = row.and(mask)
+            val newRow = row.shr(9).or(hand.shl(54))
+            hands[player.playerId] = newHand
+            rows[idx] = newRow
+        }
+
+        fun pushLeft(idx: Int, player: Player, rows: LongArray, hands: LongArray) {
+            val row = rows[idx]
+            val hand = hands[player.playerId]
+            val mask = MASK[0]
+            val newHand = row.and(mask).shr(54)
+            val newRow = row.shl(9).or(hand)
+            hands[player.playerId] = newHand
+            rows[idx] = newRow
+        }
+
+        fun pushDown(idx: Int, player: Player, rows: LongArray, hands: LongArray) {
+            val mask = MASK[idx]
+            val shift = (6 - idx) * 9
+            var pushed = hands[player.playerId].shl(shift)
+            for (i in (0 until 7)) {
+                val row = rows[i]
+                val newPushed = row.and(mask)
+                val newRow = row.xor(newPushed).or(pushed)
+                rows[i] = newRow
+                pushed = newPushed
+            }
+            hands[player.playerId] = pushed.shr(shift)
+        }
+
+        fun pushUp(idx: Int, player: Player, rows: LongArray, hands: LongArray) {
+            val mask = MASK[idx]
+            val shift = (6 - idx) * 9
+            var pushed = hands[player.playerId].shl(shift)
+            for (i in (6 downTo -1)) {
+                val row = rows[i]
+                val newPushed = row.and(mask)
+                val newRow = row.xor(newPushed).or(pushed)
+                rows[i] = newRow
+                pushed = newPushed
+            }
+            hands[player.playerId] = pushed.shr(shift)
+        }
+    }
+}
+
 data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyField: Field) {
     private val cachedPaths = arrayOfNulls<MutableList<PathElem>>(2)
 
@@ -2101,8 +2158,8 @@ object Items {
         "MASK",
         "POTION",
         "SCROLL",
-        "SWORD",
-        "SHIELD"
+        "SHIELD",
+        "SWORD"
     )
 
     fun index(name: String) = items.indexOf(name) + 1
