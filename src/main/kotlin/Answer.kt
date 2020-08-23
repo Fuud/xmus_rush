@@ -603,7 +603,7 @@ data class Pushes(val ourPush: OnePush, val enemyPush: OnePush) {
     }
 
     fun collision(): Boolean {
-        return ourPush.idx == enemyPush.idx && (ourPush.direction.isVertical == enemyPush.direction.isVertical)
+        return ourPush.rowColumn == enemyPush.rowColumn && (ourPush.direction.isVertical == enemyPush.direction.isVertical)
     }
 }
 
@@ -1622,6 +1622,9 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
     }
 
     fun push(pushes: Pushes): GameBoard {
+        if (pushes.collision()){
+            return this
+        }
         val firstPush = if (pushes.ourPush.direction.isVertical) {
             pushes.enemyPush
         } else {
