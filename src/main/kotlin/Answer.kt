@@ -1424,7 +1424,7 @@ data class BitBoard(val rows: LongArray, val hands: LongArray) {
     }
 
     private fun getField(y: Int, x: Int): Long {
-        return rows[y].and(MASK[x]).shl((6 - x) * 9)
+        return rows[y].and(MASK[x]).shr((6 - x) * 9)
     }
 
     fun canUp(x: Int, y: Int) = (y > 0) && BitField.connected(getField(y, x), UP, getField(y - 1, x))
