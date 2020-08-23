@@ -1445,7 +1445,8 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         val pooledFront: MutableList<Point> = ArrayList(50)
     }
 
-    fun get(y: Int, x: Int) = board[y * 7 + x]
+    fun get(y: Int, x: Int) =board[y * 7 + x]
+    fun get(theBoard :Array<Field>,y: Int, x: Int)=theBoard[y * 7 + x]
     operator fun get(point: Point) = get(point.y, point.x)
 
     fun findDomain(
@@ -1626,101 +1627,107 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         var enemyField = enemyField
 
         val newBoard = BoardCache.newBoard(board)
-
+        val rows = bitBoard.rows.clone()
+        val hands = bitBoard.hands.clone()
         firstPush.run {
             val isEnemy = firstPushIsEnemy
-            val field = if (isEnemy)  enemyField else ourField
-            val rows = bitBoard.rows.clone()
-        val hands = bitBoard.hands.clone()
-        if (direction == LEFT || direction == RIGHT) {
-            if (direction == LEFT) {
-                if (isEnemy) {
-                        enemyField = get(rowColumn, 0)
-                    }else{
-                        ourField = get(rowColumn, 0)
+            val playerId = if (isEnemy) 1 else 0
+            val field = if (isEnemy) enemyField else ourField
+            if (direction == LEFT || direction == RIGHT) {
+                if (direction == LEFT) {
+                    if (isEnemy) {
+                        enemyField = get(newBoard,rowColumn, 0)
+                    } else {
+                        ourField = get(newBoard,rowColumn, 0)
                     }
-                newBoard[rowColumn * 7 + 6] = field
-                System.arraycopy(board, rowColumn * 7 + 1, newBoard, rowColumn * 7, 6)
-                BitBoard.pushLeft(rowColumn, rows, hands, playerId)
-            } else {
-                if (isEnemy) {
-                        enemyField = get(rowColumn, 6)
-                    }else{
-                        ourField = get(rowColumn, 6)
-                    }newBoard[rowColumn * 7 + 0] = field
-                System.arraycopy(board, rowColumn * 7, newBoard, rowColumn * 7 + 1, 6)
-                BitBoard.pushRight(rowColumn, rows, hands, playerId)
+                    newBoard[rowColumn * 7 + 6] = field
+                    System.arraycopy(board, rowColumn * 7 + 1, newBoard, rowColumn * 7, 6)
+                    BitBoard.pushLeft(rowColumn, rows, hands, playerId)
+                } else {
+                    if (isEnemy) {
+                        enemyField = get(newBoard,rowColumn, 6)
+                    } else {
+                        ourField = get(newBoard,rowColumn, 6)
+                    }
+                    newBoard[rowColumn * 7 + 0] = field
+                    System.arraycopy(board, rowColumn * 7, newBoard, rowColumn * 7 + 1, 6)
+                    BitBoard.pushRight(rowColumn, rows, hands, playerId)
                 }
             } else {
                 if (direction == UP) {
-                    if (isEnemy){
-                        enemyField = get(0, rowColumn)
-                    }else {
-                        ourField = get(0, rowColumn)
-                    }newBoard[6 * 7 + rowColumn] = field
-                for (y in (0..5)) {
-                    newBoard[y * 7 + rowColumn] = get(y + 1, rowColumn)
-                }
-                BitBoard.pushUp(rowColumn, rows, hands, playerId)
-            } else {
-                if (isEnemy){
-                        enemyField = get(6, rowColumn)
-                    }else {
-                        ourField = get(6, rowColumn)
+                    if (isEnemy) {
+                        enemyField = get(newBoard,0, rowColumn)
+                    } else {
+                        ourField = get(newBoard,0, rowColumn)
+                    }
+                    newBoard[6 * 7 + rowColumn] = field
+                    for (y in (0..5)) {
+                        newBoard[y * 7 + rowColumn] = get(newBoard,y + 1, rowColumn)
+                    }
+                    BitBoard.pushUp(rowColumn, rows, hands, playerId)
+                } else {
+                    if (isEnemy) {
+                        enemyField = get(newBoard,6, rowColumn)
+                    } else {
+                        ourField = get(newBoard,6, rowColumn)
                     }
                     newBoard[0 * 7 + rowColumn] = field
                     for (y in (1..6)) {
-                        newBoard[y * 7 + rowColumn] = get(y - 1, rowColumn)
+                        newBoard[y * 7 + rowColumn] = get(newBoard,y - 1, rowColumn)
                     }
+                    BitBoard.pushDown(rowColumn, rows, hands, playerId)
                 }
             }
         }
         secondPush.run {
             val isEnemy = !firstPushIsEnemy
-            val field = if (isEnemy)  enemyField else ourField
+            val playerId = if (isEnemy) 1 else 0
+            val field = if (isEnemy) enemyField else ourField
             if (direction == LEFT || direction == RIGHT) {
                 if (direction == LEFT) {
                     if (isEnemy) {
-                        enemyField = get(rowColumn, 0)
+                        enemyField = get(newBoard,rowColumn, 0)
                     }else{
-                        ourField = get(rowColumn, 0)
+                        ourField = get(newBoard,rowColumn, 0)
                     }
                     newBoard[rowColumn * 7 + 6] = field
-                    System.arraycopy(board, rowColumn * 7 + 1, newBoard, rowColumn * 7, 6)
+                    System.arraycopy(newBoard, rowColumn * 7 + 1, newBoard, rowColumn * 7, 6)
+                    BitBoard.pushLeft(rowColumn, rows, hands, playerId)
                 } else {
                     if (isEnemy) {
-                        enemyField = get(rowColumn, 6)
+                        enemyField = get(newBoard,rowColumn, 6)
                     }else{
-                        ourField = get(rowColumn, 6)
+                        ourField = get(newBoard,rowColumn, 6)
                     }
                     newBoard[rowColumn * 7 + 0] = field
-                    System.arraycopy(board, rowColumn * 7, newBoard, rowColumn * 7 + 1, 6)
+                    System.arraycopy(newBoard, rowColumn * 7, newBoard, rowColumn * 7 + 1, 6)
+                    BitBoard.pushRight(rowColumn, rows, hands, playerId)
                 }
             } else {
                 if (direction == UP) {
                     if (isEnemy){
-                        enemyField = get(0, rowColumn)
+                        enemyField = get(newBoard,0, rowColumn)
                     }else {
-                        ourField = get(0, rowColumn)
+                        ourField = get(newBoard,0, rowColumn)
                     }
                     newBoard[6 * 7 + rowColumn] = field
                     for (y in (0..5)) {
-                        newBoard[y * 7 + rowColumn] = get(y + 1, rowColumn)
+                        newBoard[y * 7 + rowColumn] = get(newBoard,y + 1, rowColumn)
                     }
+                    BitBoard.pushUp(rowColumn, rows, hands, playerId)
                 } else {
                     if (isEnemy){
-                        enemyField = get(6, rowColumn)
+                        enemyField = get(newBoard,6, rowColumn)
                     }else {
-                        ourField = get(6, rowColumn)
+                        ourField = get(newBoard,6, rowColumn)
                     }
                     newBoard[0 * 7 + rowColumn] = field
                     for (y in (1..6)) {
-                        newBoard[y * 7 + rowColumn] = get(y - 1, rowColumn)
+                        newBoard[y * 7 + rowColumn] = get(newBoard,y - 1, rowColumn)
                     }
+                    BitBoard.pushDown(rowColumn, rows, hands, playerId)
                 }
-                }
-                BitBoard.pushDown(rowColumn, rows, hands, playerId)
-
+            }
         }
         val result = GameBoard(
             board = newBoard,
