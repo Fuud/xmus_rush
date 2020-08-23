@@ -368,9 +368,12 @@ private fun findBestMove(
     val ourNextQuests = ourQuests.and(itemsTaken.inv())
     val ends = paths.filter { Integer.bitCount(it.itemsTakenSet) == itemsTakenSize }
         .map { it.point }.toHashSet()
+    if(ends.size ==1) {
+        return paths.find { Integer.bitCount(it.itemsTakenSet) == itemsTakenSize  }!!
+    }
     ends.forEach { moveScores[it] = 0.0 }
 
-    val timeLimit = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
+    val timeLimit = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 42)
 
     val possibleQuestCoef = if (we.numPlayerCards - Integer.bitCount(ourQuests) > 0) {
         itemsTakenSize * 1.0 / (we.numPlayerCards - Integer.bitCount(ourQuests))
