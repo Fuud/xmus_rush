@@ -49,7 +49,7 @@ object Replay {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        val replayId = "483193444"
+        val replayId = "483206202"
 
         val replayFile = File("replays/$replayId.txt")
 
@@ -65,6 +65,7 @@ object Replay {
                 System.setIn(input.byteInputStream())
                 performGame()
             } catch (t: Throwable) {
+                System.err.println(t)
             }
         }
 

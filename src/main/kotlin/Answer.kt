@@ -1293,11 +1293,7 @@ data class Field(
     val tile: Tile,
     val item: Int
 ) {
-    fun connect(field: Field, direction: Direction): Boolean {
-        return this.tile.connect(field.tile, direction)
-    }
-
-    fun containsQuestItem(playerId: Int, questsSet: Int): Boolean {
+       fun containsQuestItem(playerId: Int, questsSet: Int): Boolean {
         return if (questsSet[item.absoluteValue]) {
             if (playerId == 0 && item > 0) {
                 true
@@ -1305,6 +1301,37 @@ data class Field(
         } else {
             false
         }
+    }
+}
+
+data class BitField(val bits: Long) {
+    companion object {
+        val TILE_MASK: Long = 0b000001111
+        val ITEM_MASK: Long = 0b111110000
+        val NO_ITEM: Long = 12.shl(4)
+
+        fun connected(field1: Long, direction: Direction, field2: Long): Boolean {
+            return field1.and(direction.mask) != 0L && field2.and(direction.opposite.mask) != 0L
+        }
+    }
+
+    fun connected(field: BitField, direction: Direction): Boolean {
+        return connected(this.bits, direction, field.bits)
+    }
+
+    fun containsQuestItem(playerId: Int, questsSet: Int): Boolean {
+        val item = item()
+        return if (questsSet[item.absoluteValue]) {
+            if (playerId == 0 && item > 0) {
+                true
+            } else playerId == 1 && item < 0
+        } else {
+            false
+        }
+    }
+
+    fun item(): Int {
+        return (bits.shr(4) - 12).toInt()
     }
 }
 
@@ -1368,36 +1395,51 @@ class Domains {
 
 data class BitBoard(val rows: LongArray, val hands: LongArray) {
     companion object {
-        val TILE_MASK: Long = 0b000001111
-        val ITEM_MASK: Long = 0b011110000
-        val PLAY_MASK: Long = 0b100000000
         val FIELD_MASK: Long = 0b111111111
         val MASK: LongArray = (0..6).map { FIELD_MASK.shl((6 - it) * 9) }.toLongArray()
 
-        fun pushRight(idx: Int, player: Player, rows: LongArray, hands: LongArray) {
+        fun newInstance(board: Array<Field>, ourField: Field, enemyField: Field): BitBoard {
+            val rows = board.toList().chunked(7)
+                .map {
+                    var result: Long = 0
+                    for (i in (0 until 7)) {
+                        result = result.shl(9).or(fromField(it[i]))
+                    }
+                    result
+                }.toLongArray()
+            val hands = longArrayOf(fromField(ourField), fromField(enemyField))
+            return BitBoard(rows, hands)
+        }
+
+        fun fromField(field: Field): Long {
+            return (field.item + 12L).shl(4).or(field.tile.mask)
+        }
+
+        fun pushRight(idx: Int, rows: LongArray, hands: LongArray, playerId: Int) {
             val row = rows[idx]
-            val hand = hands[player.playerId]
+            val hand = hands[playerId]
             val mask = MASK[6]
             val newHand = row.and(mask)
             val newRow = row.shr(9).or(hand.shl(54))
-            hands[player.playerId] = newHand
+            hands[playerId] = newHand
             rows[idx] = newRow
         }
 
-        fun pushLeft(idx: Int, player: Player, rows: LongArray, hands: LongArray) {
+        fun pushLeft(idx: Int, rows: LongArray, hands: LongArray, playerId: Int) {
             val row = rows[idx]
-            val hand = hands[player.playerId]
+            val hand = hands[playerId]
             val mask = MASK[0]
-            val newHand = row.and(mask).shr(54)
-            val newRow = row.shl(9).or(hand)
-            hands[player.playerId] = newHand
+            val pushed = row.and(mask)
+            //xor clear left bits before shift
+            val newRow = row.xor(pushed).shl(9).or(hand)
+            hands[playerId] = pushed.shr(54)
             rows[idx] = newRow
         }
 
-        fun pushDown(idx: Int, player: Player, rows: LongArray, hands: LongArray) {
+        fun pushDown(idx: Int, rows: LongArray, hands: LongArray, playerId: Int) {
             val mask = MASK[idx]
             val shift = (6 - idx) * 9
-            var pushed = hands[player.playerId].shl(shift)
+            var pushed = hands[playerId].shl(shift)
             for (i in (0 until 7)) {
                 val row = rows[i]
                 val newPushed = row.and(mask)
@@ -1405,27 +1447,37 @@ data class BitBoard(val rows: LongArray, val hands: LongArray) {
                 rows[i] = newRow
                 pushed = newPushed
             }
-            hands[player.playerId] = pushed.shr(shift)
+            hands[playerId] = pushed.shr(shift)
         }
 
-        fun pushUp(idx: Int, player: Player, rows: LongArray, hands: LongArray) {
+        fun pushUp(idx: Int, rows: LongArray, hands: LongArray, playerId: Int) {
             val mask = MASK[idx]
             val shift = (6 - idx) * 9
-            var pushed = hands[player.playerId].shl(shift)
-            for (i in (6 downTo -1)) {
+            var pushed = hands[playerId].shl(shift)
+            for (i in (6 downTo 0)) {
                 val row = rows[i]
                 val newPushed = row.and(mask)
                 val newRow = row.xor(newPushed).or(pushed)
                 rows[i] = newRow
                 pushed = newPushed
             }
-            hands[player.playerId] = pushed.shr(shift)
+            hands[playerId] = pushed.shr(shift)
         }
     }
+
+    private fun getField(y: Int, x: Int): Long {
+        return rows[y].and(MASK[x]).shl((6 - x) * 9)
+    }
+
+    fun canUp(x: Int, y: Int) = (y > 0) && BitField.connected(getField(y, x), UP, getField(y - 1, x))
+    fun canRight(x: Int, y: Int) = (x < 6) && BitField.connected(getField(y, x), RIGHT, getField(y, x + 1))
+    fun canDown(x: Int, y: Int) = (y < 6) && BitField.connected(getField(y, x), DOWN, getField(y + 1, x))
+    fun canLeft(x: Int, y: Int) = (x > 0) && BitField.connected(getField(y, x), LEFT, getField(y, x - 1))
 }
 
 data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyField: Field) {
     private val cachedPaths = arrayOfNulls<MutableList<PathElem>>(2)
+    private val bitBoard = BitBoard.newInstance(board, ourField, enemyField)
 
     companion object {
         val pooledList1 = arrayListOf<PathElem>()
@@ -1603,15 +1655,19 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         val field = if (playerId == 0) ourField else enemyField
         val newBoard = BoardCache.newBoard(board)
         val newField: Field
+        val rows = bitBoard.rows.clone()
+        val hands = bitBoard.hands.clone()
         if (direction == LEFT || direction == RIGHT) {
             if (direction == LEFT) {
                 newField = get(rowColumn, 0)
                 newBoard[rowColumn * 7 + 6] = field
                 System.arraycopy(board, rowColumn * 7 + 1, newBoard, rowColumn * 7, 6)
+                BitBoard.pushLeft(rowColumn, rows, hands, playerId)
             } else {
                 newField = get(rowColumn, 6)
                 newBoard[rowColumn * 7 + 0] = field
                 System.arraycopy(board, rowColumn * 7, newBoard, rowColumn * 7 + 1, 6)
+                BitBoard.pushRight(rowColumn, rows, hands, playerId)
             }
         } else {
             if (direction == UP) {
@@ -1620,19 +1676,28 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
                 for (y in (0..5)) {
                     newBoard[y * 7 + rowColumn] = get(y + 1, rowColumn)
                 }
+                BitBoard.pushUp(rowColumn, rows, hands, playerId)
             } else {
                 newField = get(6, rowColumn)
                 newBoard[0 * 7 + rowColumn] = field
                 for (y in (1..6)) {
                     newBoard[y * 7 + rowColumn] = get(y - 1, rowColumn)
                 }
+                BitBoard.pushDown(rowColumn, rows, hands, playerId)
             }
         }
-        return GameBoard(
+        val result = GameBoard(
             board = newBoard,
             ourField = if (playerId == 0) newField else ourField,
             enemyField = if (playerId == 1) newField else enemyField
         )
+        val newBitBoard = BitBoard(rows, hands)
+        if (!result.bitBoard.rows.contentEquals(newBitBoard.rows)
+            || !result.bitBoard.hands.contentEquals(newBitBoard.hands)
+        ) {
+            println("ALARME!!!!")
+        }
+        return result
     }
 
 
@@ -1643,15 +1708,10 @@ data class GameBoard(val board: Array<Field>, val ourField: Field, val enemyFiel
         RIGHT -> canRight(this)
     }
 
-    private fun canUp(point: Point) = canUp(point.x, point.y)
-    private fun canRight(point: Point) = canRight(point.x, point.y)
-    private fun canDown(point: Point) = canDown(point.x, point.y)
-    private fun canLeft(point: Point) = canLeft(point.x, point.y)
-
-    private fun canUp(x: Int, y: Int) = (y > 0) && get(y, x).connect(get(y - 1, x), UP)
-    private fun canRight(x: Int, y: Int) = (x < 6) && get(y, x).connect(get(y, x + 1), RIGHT)
-    private fun canDown(x: Int, y: Int) = (y < 6) && get(y, x).connect(get(y + 1, x), DOWN)
-    private fun canLeft(x: Int, y: Int) = (x > 0) && get(y, x).connect(get(y, x - 1), LEFT)
+    private fun canUp(point: Point) = bitBoard.canUp(point.x, point.y)
+    private fun canRight(point: Point) = bitBoard.canRight(point.x, point.y)
+    private fun canDown(point: Point) = bitBoard.canDown(point.x, point.y)
+    private fun canLeft(point: Point) = bitBoard.canLeft(point.x, point.y)
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -1772,7 +1832,7 @@ data class Point private constructor(val x: Int, val y: Int) {
 }
 
 @Suppress("unused")
-enum class Tile(val mask: Int, val roads: Int) {
+enum class Tile(val mask: Long, val roads: Int) {
     T0011(0b0011, 2),
     T0101(0b0101, 2),
     T0110(0b0110, 2),
@@ -1787,13 +1847,13 @@ enum class Tile(val mask: Int, val roads: Int) {
 
     companion object {
         fun read(input: Scanner): Tile {
-            val mask = Integer.parseInt(input.next(), 2)
+            val mask = java.lang.Long.parseLong(input.next(), 2)
             return values().find { it.mask == mask }!!
         }
     }
 
     fun connect(tile: Tile, direction: Direction): Boolean {
-        return this.mask.and(direction.mask) != 0 && tile.mask.and(direction.opposite.mask) != 0
+        return this.mask.and(direction.mask) != 0L && tile.mask.and(direction.opposite.mask) != 0L
     }
 }
 
@@ -1833,24 +1893,6 @@ data class Player(
     }
 }
 
-data class Item(val itemName: String, val itemPlayerId: Int) {
-    companion object {
-        fun Item?.questMask(playerId: Int, quests: List<String>): Int {
-            if (this != null && this.itemPlayerId == playerId) {
-                val indexOf = quests.indexOf(this.itemName)
-                if (indexOf > -1) {
-                    return (1).shl(indexOf)
-                }
-            }
-            return 0
-        }
-
-        fun Item?.isBelongToQuest(playerId: Int, quests: List<String>): Boolean {
-            return this != null && this.itemPlayerId == playerId && quests.contains(this.itemName)
-        }
-    }
-}
-
 data class ItemDto(val itemName: String, val itemX: Int, val itemY: Int, val itemPlayerId: Int) {
     constructor(input: Scanner) : this(
         itemName = input.next(),
@@ -1871,7 +1913,7 @@ class Quest(input: Scanner) {
     val questPlayerId = input.nextInt()
 }
 
-enum class Direction(val mask: Int, val isVertical: Boolean, val priority: Int) {
+enum class Direction(val mask: Long, val isVertical: Boolean, val priority: Int) {
     UP(0b1000, true, priority = 0),
     RIGHT(0b0100, false, priority = 1),
     DOWN(0b0010, true, priority = 0),
