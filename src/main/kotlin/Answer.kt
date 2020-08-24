@@ -1532,8 +1532,8 @@ data class GameBoard(val bitBoard: BitBoard) {
         }
         val domain = DomainInfo(size, ourQuestsBits, enemyQuestsBits, ourItem, enemyItem)
 
-        for (x in (0..6)) {
-            for (y in (0..6)) {
+        for (y in (0..6)) {
+            for (x in (0..6)) {
                 if (visitedPoints[y * 7 + x]) {
                     domains.set(domain, x, y)
                 }
