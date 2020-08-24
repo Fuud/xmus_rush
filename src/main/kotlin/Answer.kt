@@ -757,9 +757,17 @@ private fun selectPivotSolver(
     val enemyPushes = pushes.groupBy { it.pushes.enemyPush }.keys.toList()
     val ENEMY_SIZE = enemyPushes.size
 
+    var haveAnyChances = false
     for (push in pushes) {
-        val score = push.score
-        a[enemyPushes.indexOf(push.pushes.enemyPush)][ourPushes.indexOf(push.pushes.ourPush)] = r(score)
+        val score = (push.score)
+        if(score>0) {
+            haveAnyChances = true
+        }
+        a[enemyPushes.indexOf(push.pushes.enemyPush)][ourPushes.indexOf(push.pushes.ourPush)] = score
+    }
+    if(!haveAnyChances) {
+        log("there are no chances to win ;(")
+        return ourPushes[0]
     }
 
     if (false) {
@@ -780,7 +788,6 @@ private fun selectPivotSolver(
         }
         log(stringBuilder.toString())
     }
-
 
     val hLabel = IntArray(ENEMY_SIZE) { idx -> -idx - 1 } // y_i are represented by negative ints
     val vLabel = IntArray(OUR_SIZE) { idx -> idx + 1 } // x_i are represented by  positives ints
