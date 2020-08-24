@@ -1474,7 +1474,29 @@ data class GameBoard(val bitBoard: BitBoard) {
         val pooledList1 = arrayListOf<PathElem>()
         val pooledList2 = arrayListOf<PathElem>()
         var visitedPoints = 0L
-        val pooledFront: MutableList<Point> = ArrayList(50)
+        val pooledFront: Array<Point?> = Array(50) { null }
+        var pooledFrontReadPos = 0
+        var pooledFrontWritePos = 0
+
+        fun readNextFront(): Point? {
+            return if (pooledFrontWritePos == pooledFrontReadPos){
+                null
+            }else {
+                val result = pooledFront[pooledFrontReadPos]
+                pooledFrontReadPos++
+                result
+            }
+        }
+
+        fun writeNextFront(point: Point){
+            pooledFront[pooledFrontWritePos] = point
+            pooledFrontWritePos++
+        }
+
+        fun cleanFront(){
+            pooledFrontReadPos = 0
+            pooledFrontWritePos = 0
+        }
     }
 
     fun findDomain(
@@ -1496,10 +1518,13 @@ data class GameBoard(val bitBoard: BitBoard) {
         var enemyItem = 0
 
         visitedPoints = visitedPoints.set(point.idx)
-        pooledFront.clear()
-        pooledFront.add(point)
-        while (pooledFront.isNotEmpty()) {
-            val nextPoint = pooledFront.removeAt(pooledFront.size - 1)
+        cleanFront()
+        writeNextFront(point)
+        while (true) {
+            val nextPoint = readNextFront()
+            if (nextPoint == null){
+                break
+            }
             size++
             val item = bitBoard[nextPoint].item
             if (item > 0) {
@@ -1520,7 +1545,7 @@ data class GameBoard(val bitBoard: BitBoard) {
                     val newPoint = nextPoint.move(direction)
                     if (!visitedPoints[newPoint.idx]) {
                         visitedPoints = visitedPoints.set(newPoint.idx)
-                        pooledFront.add(newPoint)
+                        writeNextFront(newPoint)
                     }
                 }
             }
