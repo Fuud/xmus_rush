@@ -17,7 +17,6 @@ import java.util.*
 import java.util.concurrent.TimeUnit
 import javax.management.NotificationEmitter
 import javax.management.NotificationListener
-import kotlin.collections.ArrayList
 import kotlin.collections.component1
 import kotlin.math.abs
 import kotlin.math.absoluteValue
@@ -142,7 +141,6 @@ private fun initProbabilities() {
     }
 }
 
-
 val twoDigitsAfterDotFormat = DecimalFormat().apply {
     maximumFractionDigits = 2
 }
@@ -161,29 +159,6 @@ val probablyLogCompilation: () -> Unit = run {
     }
 }
 
-object BoardCache {
-    private val boards = mutableListOf<Array<Field>>()
-    private var index = 0
-
-    fun newBoard(orig: Array<Field>): Array<Field> {
-        return if (index == boards.size) {
-            val result = orig.clone()
-            boards.add(result)
-            index++
-            result
-        } else {
-            val result = boards[index]
-            System.arraycopy(orig, 0, result, 0, orig.size)
-            index++
-            result
-        }
-    }
-
-    fun reset() {
-        index = 0
-    }
-}
-
 val rand = Random(777)
 
 val moveDomains = Domains()
@@ -199,7 +174,6 @@ var numberOfDraws = 0
 var pushesRemain = 74
 
 fun performGame() {
-    val globalStart = System.nanoTime()
     initProbabilities()
     Warmup.warmupOnce()
     Pushes.installRealPushes()
@@ -223,7 +197,6 @@ fun performGame() {
 
             val start = System.nanoTime()
             log("step $step")
-            BoardCache.reset()
 
             val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input)
 
@@ -259,7 +232,6 @@ fun performGame() {
                 }
 
                 log("Duration: ${TimeUnit.NANOSECONDS.toMillis(duration)}")
-//                }
             } else {
                 val duration = measureNanoTime {
                     val bestPath = findBestMove(
@@ -561,8 +533,6 @@ data class OnePush(val direction: Direction, val rowColumn: Int) {
     override fun toString(): String {
         return "${direction.name.first()}$rowColumn"
     }
-
-
 }
 
 data class Pushes(val ourPush: OnePush, val enemyPush: OnePush) {
@@ -598,7 +568,6 @@ data class Pushes(val ourPush: OnePush, val enemyPush: OnePush) {
         fun installRealPushes() {
             allPushes = realAllPushes
         }
-
     }
 
     fun collision(): Boolean {
@@ -671,10 +640,7 @@ data class PushAndMove(
 
         return@let gameEstimate
     }
-
 }
-
-data class Action(val push: OnePush, val isEnemy: Boolean)
 
 private fun findBestPush(
     we: Player,
@@ -690,21 +656,6 @@ private fun findBestPush(
     val startTimeNanos = System.nanoTime()
     val timeLimitNanos = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 40)
     val deadlineTimeNanos = timeLimitNanos + startTimeNanos
-
-//    val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
-//            || (we.numPlayerCards == enemy.numPlayerCards && gameBoard.step < 50))
-//
-//    val weHaveSeenThisPositionBefore = prevPushesAtThisPosition != null
-//    val forbiddenPushMoves = if (weHaveSeenThisPositionBefore && weLoseOrDrawAtEarlyGame) {
-//        //let's forbid random one push
-//        val ourPushInSamePosition = prevPushesAtThisPosition!![rand.nextInt(prevPushesAtThisPosition.size)].ourPush
-//        listOf(
-//            ourPushInSamePosition,
-//            ourPushInSamePosition.copy(direction = ourPushInSamePosition.direction.opposite)
-//        )
-//    } else {
-//        emptyList()
-//    }
 
     val pushes = computePushes(
         gameBoard,
@@ -874,7 +825,7 @@ private fun selectPivotSolver(
                 // step #4
                 val pivot = a[p][q]
 
-                corner = corner - bottom[p] * right[q] / pivot
+                corner -= bottom[p] * right[q] / pivot
 
                 for (i in (0 until ENEMY_SIZE)) {
                     if (i != p) {
@@ -1051,11 +1002,6 @@ private fun pushAndMove(
     enemy: Player,
     enemyQuests: Int
 ): PushAndMove {
-    val enemyDirection = pushes.enemyPush.direction
-    val enemyRowColumn = pushes.enemyPush.rowColumn
-    val direction = pushes.ourPush.direction
-    val rowColumn = pushes.ourPush.rowColumn
-
     val ourPlayer = we.push(pushes)
     val enemyPlayer = enemy.push(pushes)
     val newBoard = gameBoard.push(pushes)
@@ -1179,7 +1125,9 @@ object PushSelectors {
     private fun pushOutItems(push: PushAndMove, playerId: Int, quests: Int): Int {
         fun BitField.holdOurQuestItem(playerId: Int, quests: Int): Boolean {
             val item = this.item
-            return if (playerId == 0 && item > 0) {
+            return if (item == 0) {
+                return false
+            } else if (playerId == 0 && item > 0) {
                 quests[item]
             } else if (playerId == 1 && item < 0) {
                 quests[-item]
@@ -1286,7 +1234,7 @@ data class BitField private constructor(val bits: Long) {
 }
 
 private operator fun Int.get(index: Int): Boolean {
-    return this and (1.shl(index)) > 0
+    return this and (1.shl(index)) != 0
 }
 
 private fun Int.set(index: Int): Int {
@@ -1294,7 +1242,7 @@ private fun Int.set(index: Int): Int {
 }
 
 private operator fun Long.get(index: Int): Boolean {
-    return this and (1L.shl(index)) > 0
+    return this and (1L.shl(index)) != 0L
 }
 
 private fun Long.set(index: Int): Long {
@@ -1463,8 +1411,6 @@ data class BitBoard(val rows: LongArray, val hands: LongArray) {
         result = 31 * result + hands.contentHashCode()
         return result
     }
-
-
 }
 
 data class GameBoard(val bitBoard: BitBoard) {
@@ -1734,12 +1680,6 @@ private fun Int.nextSetBit(fromIndex: Int): Int {
         }
     }
     return -1
-}
-
-private operator fun BitSet.plus(item: Int): BitSet {
-    val result = this.clone() as BitSet
-    result.set(item)
-    return result
 }
 
 private operator fun Array<IntArray>.set(point: Point, value: Int) {
