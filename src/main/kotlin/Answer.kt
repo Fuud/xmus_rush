@@ -1280,7 +1280,7 @@ data class BitField private constructor(val bits: Long) {
         }
     }
 
-    val item =  (bits.shr(4) - 12).toInt()
+    val item = (bits.shr(4) - 12).toInt()
 
     val tile = bits.and(TILE_MASK).toInt()
 }
@@ -1478,7 +1478,6 @@ data class GameBoard(val bitBoard: BitBoard) {
     companion object {
         val pooledList1 = arrayListOf<PathElem>()
         val pooledList2 = arrayListOf<PathElem>()
-        val pooledDomains: Array<IntArray> = Array(7) { IntArray(7) }
         var visitedPoints = 0L
         val pooledFront: MutableList<Point> = ArrayList(50)
     }
@@ -1489,13 +1488,9 @@ data class GameBoard(val bitBoard: BitBoard) {
         enemyQuestsSet: Int,
         domains: Domains
     ): DomainInfo {
-        if (domains.get(point).size > 0) {
-            return domains.get(point)
-        }
-        for (y in 0..6) {
-            for (x in 0..6) {
-                pooledDomains[y][x] = -1
-            }
+        val cachedValue = domains.get(point)
+        if (cachedValue.size > 0) {
+            return cachedValue
         }
         visitedPoints = 0L
 
@@ -1504,7 +1499,6 @@ data class GameBoard(val bitBoard: BitBoard) {
         var enemyQuestsBits = 0
         var ourItem = 0
         var enemyItem = 0
-        val domainId = 0
 
         visitedPoints = visitedPoints.set(point.idx)
         pooledFront.clear()
@@ -1513,7 +1507,6 @@ data class GameBoard(val bitBoard: BitBoard) {
             val nextPoint = pooledFront.removeAt(pooledFront.size - 1)
             size++
             val item = bitBoard[nextPoint].item
-            pooledDomains[nextPoint] = domainId
             if (item > 0) {
                 if (ourQuestsSet[item]) {
                     ourQuestsBits = ourQuestsBits.set(item)
@@ -1539,10 +1532,9 @@ data class GameBoard(val bitBoard: BitBoard) {
         }
         val domain = DomainInfo(size, ourQuestsBits, enemyQuestsBits, ourItem, enemyItem)
 
-
-        pooledDomains.forEachIndexed { y, row ->
-            row.forEachIndexed { x, id ->
-                if (id == domainId) {
+        for (x in (0..6)) {
+            for (y in (0..6)) {
+                if (visitedPoints[y * 7 + x]) {
                     domains.set(domain, x, y)
                 }
             }
