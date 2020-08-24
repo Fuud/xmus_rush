@@ -1293,6 +1293,14 @@ private fun Int.set(index: Int): Int {
     return this or (1.shl(index))
 }
 
+private operator fun Long.get(index: Int): Boolean {
+    return this and (1L.shl(index)) > 0
+}
+
+private fun Long.set(index: Int): Long {
+    return this or (1L.shl(index))
+}
+
 data class DomainInfo(
     val size: Int,
     val ourQuestBits: Int,
@@ -1471,7 +1479,7 @@ data class GameBoard(val bitBoard: BitBoard) {
         val pooledList1 = arrayListOf<PathElem>()
         val pooledList2 = arrayListOf<PathElem>()
         val pooledDomains: Array<IntArray> = Array(7) { IntArray(7) }
-        val visitedPoints = BitSet(50)
+        var visitedPoints = 0L
         val pooledFront: MutableList<Point> = ArrayList(50)
     }
 
@@ -1489,7 +1497,7 @@ data class GameBoard(val bitBoard: BitBoard) {
                 pooledDomains[y][x] = -1
             }
         }
-        visitedPoints.clear()
+        visitedPoints = 0L
 
         var size = 0
         var ourQuestsBits = 0
@@ -1498,7 +1506,7 @@ data class GameBoard(val bitBoard: BitBoard) {
         var enemyItem = 0
         val domainId = 0
 
-        visitedPoints.set(point.idx)
+        visitedPoints = visitedPoints.set(point.idx)
         pooledFront.clear()
         pooledFront.add(point)
         while (pooledFront.isNotEmpty()) {
@@ -1522,8 +1530,8 @@ data class GameBoard(val bitBoard: BitBoard) {
                 val direction = Direction.allDirections[i]
                 if (nextPoint.can(direction)) {
                     val newPoint = nextPoint.move(direction)
-                    if (!visitedPoints.get(newPoint.idx)) {
-                        visitedPoints.set(newPoint.idx)
+                    if (!visitedPoints[newPoint.idx]) {
+                        visitedPoints = visitedPoints.set(newPoint.idx)
                         pooledFront.add(newPoint)
                     }
                 }
