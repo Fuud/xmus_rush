@@ -722,6 +722,8 @@ private fun selectPivotSolver(
 ): OnePush {
     log("pivotSolver: prev pushes at this position: $prevPushesAtThisPosition")
 
+    fun r(value: Double) = if (value > -0.0000001 && value < 0.0000001) 0.0 else value
+
     val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
             || (we.numPlayerCards == enemy.numPlayerCards && step < 50))
 
@@ -750,7 +752,6 @@ private fun selectPivotSolver(
         }
     }
 
-
     val ourPushes = pushes.groupBy { it.pushes.ourPush }.keys.toList()
     val OUR_SIZE = ourPushes.size
     val enemyPushes = pushes.groupBy { it.pushes.enemyPush }.keys.toList()
@@ -758,7 +759,7 @@ private fun selectPivotSolver(
 
     for (push in pushes) {
         val score = push.score
-        a[enemyPushes.indexOf(push.pushes.enemyPush)][ourPushes.indexOf(push.pushes.ourPush)] = score
+        a[enemyPushes.indexOf(push.pushes.enemyPush)][ourPushes.indexOf(push.pushes.ourPush)] = r(score)
     }
 
     if (false) {
@@ -825,37 +826,37 @@ private fun selectPivotSolver(
                 // step #4
                 val pivot = a[p][q]
 
-                corner -= bottom[p] * right[q] / pivot
+                corner = r(corner -bottom[p] * right[q] / pivot)
 
                 for (i in (0 until ENEMY_SIZE)) {
                     if (i != p) {
-                        bottom[i] = bottom[i] - bottom[p] * a[i][q] / pivot
+                        bottom[i] = r(bottom[i] - bottom[p] * a[i][q] / pivot)
                     }
                 }
-                bottom[p] = -bottom[p] / pivot
+                bottom[p] = r(-bottom[p] / pivot)
 
                 for (j in (0 until OUR_SIZE)) {
                     if (j != q) {
-                        right[j] = right[j] - a[p][j] * right[q] / pivot
+                        right[j] = r(right[j] - a[p][j] * right[q] / pivot)
                     }
                 }
-                right[q] = right[q] / pivot
+                right[q] = r(right[q] / pivot)
 
                 for (i in (0 until ENEMY_SIZE)) {
                     for (j in (0 until OUR_SIZE)) {
                         if (i != p && j != q) {
-                            a[i][j] = a[i][j] - a[p][j] * a[i][q] / pivot
+                            a[i][j] = r(a[i][j] - a[p][j] * a[i][q] / pivot)
                         }
                     }
                 }
                 for (i in (0 until ENEMY_SIZE)) {
                     for (j in (0 until OUR_SIZE)) {
                         if (i != p && j == q) {
-                            a[i][j] = a[i][j] / pivot
+                            a[i][j] = r(a[i][j] / pivot)
                         } else if (i == p && j != q) {
-                            a[i][j] = -a[i][j] / pivot
+                            a[i][j] = r(-a[i][j] / pivot)
                         } else if (i == p && j == q) {
-                            a[i][j] = 1 / a[i][j]
+                            a[i][j] = r(1 / a[i][j])
                         }
                     }
                 }
