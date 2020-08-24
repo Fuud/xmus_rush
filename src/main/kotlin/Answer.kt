@@ -368,8 +368,8 @@ private fun findBestMove(
     val ourNextQuests = ourQuests.and(itemsTaken.inv())
     val ends = paths.filter { Integer.bitCount(it.itemsTakenSet) == itemsTakenSize }
         .map { it.point }.toHashSet()
-    if(ends.size ==1) {
-        return paths.find { Integer.bitCount(it.itemsTakenSet) == itemsTakenSize  }!!
+    if (ends.size == 1) {
+        return paths.find { Integer.bitCount(it.itemsTakenSet) == itemsTakenSize }!!
     }
     ends.forEach { moveScores[it] = 0.0 }
 
@@ -1329,23 +1329,18 @@ data class PathElem(
 )
 
 class Domains {
-    private val domains: MutableList<MutableList<DomainInfo>> =
-        (0..6).map { (0..6).map { DomainInfo.empty }.toMutableList() }.toMutableList()
+    private val domains = Array(49) { DomainInfo.empty }
 
     fun clear() {
-        for (y in 0..6) {
-            for (x in 0..6) {
-                domains[y][x] = DomainInfo.empty
-            }
-        }
+        Arrays.fill(domains, DomainInfo.empty)
     }
 
     fun get(point: Point): DomainInfo {
-        return domains[point]
+        return domains[point.idx]
     }
 
     fun set(domain: DomainInfo, x: Int, y: Int) {
-        domains[y][x] = domain
+        domains[y * 7 + x] = domain
     }
 
 }
