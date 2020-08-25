@@ -633,8 +633,8 @@ data class PushAndMove(
             return@let 0.0
         }
 
-        val secondaryScore = (pushOutItems(push) * 100 + space(push)).toDouble() / (34 * 100 + 48)
-//        val secondaryScore = space(push).toDouble() / 50
+//        val secondaryScore = (pushOutItems(push) * 100 + space(push)).toDouble() / (34 * 100 + 48)
+        val secondaryScore = space(push).toDouble() / 50
         val gameEstimate = if (push.pushes.collision()) {
             if (numberOfDraws == 0) {
                 computeEstimate(ourItemRemain, enemyItemRemain, Math.max(pushesRemain - 1, 0), secondaryScore)
