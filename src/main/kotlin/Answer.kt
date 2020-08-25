@@ -325,7 +325,9 @@ private fun findBestMove(
         }
         if (enemyType == EnemyType.UNKNOWN || enemyType == EnemyType.STABLE) {
             if (enemyMovesInThisPosBeforeLastMove.isNotEmpty()) {
-                if (previousPushes.size == 2) {
+                val wasDrawOnSameLine = previousPushes.all { it.collision() } &&
+                        previousPushes.all { it.ourPush.rowColumn == previousPushes.first().ourPush.rowColumn }
+                if (wasDrawOnSameLine) {
                     enemyType = EnemyType.STABLE
                 } else {
                     enemyType = EnemyType.UNSTABLE
@@ -628,6 +630,7 @@ data class PushAndMove(
         }
 
         val secondaryScore = (pushOutItems(push) * 100 + space(push)).toDouble() / (34 * 100 + 48)
+//        val secondaryScore = space(push).toDouble() / 50
         val gameEstimate = if (push.pushes.collision()) {
             if (numberOfDraws == 0) {
                 computeEstimate(ourItemRemain, enemyItemRemain, Math.max(pushesRemain - 1, 0), secondaryScore)
