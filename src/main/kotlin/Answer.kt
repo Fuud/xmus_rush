@@ -721,6 +721,7 @@ private fun selectPivotSolver(
     prevPushesAtThisPosition: Set<Pushes>?
 ): OnePush {
     log("pivotSolver: prev pushes at this position: $prevPushesAtThisPosition")
+    log("pivotSolver: enemyType: $enemyType")
 
     fun r(value: Double) = if (value > -0.0000001 && value < 0.0000001) 0.0 else value
 
@@ -912,7 +913,7 @@ private fun selectPivotSolver(
         val best = ourStrategy
             .mapIndexed { idx, score -> ourPushes[idx] to score }
             .sortedByDescending { it.second }
-            .take(3)
+            .take(1)
         val norm = best.sumByDouble { it.second }
         var currentSum = 0.0
         for (idx in best.indices) {
