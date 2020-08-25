@@ -169,9 +169,12 @@ val movePushScores = Array(49) { DoubleArray(28) }
 
 
 var lastBoard: GameBoard? = null
+var lastBoardAndElfs: BoardAndElfs? = null
 var lastPush: OnePush? = null
 var numberOfDraws = 0
 var pushesRemain = 74
+
+data class BoardAndElfs(val gameBoard: GameBoard, val ourElf: Point, val enemyElf: Point)
 
 fun performGame() {
     initProbabilities()
@@ -190,7 +193,7 @@ fun performGame() {
 
         // game loop
 
-        val allBoards = mutableMapOf<GameBoard, MutableSet<Pushes>>()
+        val allBoards = mutableMapOf<BoardAndElfs, MutableSet<Pushes>>()
 
         repeat(150) { step ->
             pushesRemain = (150 - step) / 2 - 1
@@ -204,7 +207,7 @@ fun performGame() {
             // To debug: System.err.println("Debug messages...");
             if (turnType == 0) {
                 val duration = measureNanoTime {
-                    val prevMovesAtThisPosition = allBoards[gameBoard]
+                    val prevMovesAtThisPosition = allBoards[BoardAndElfs(gameBoard, we.point, enemy.point)]
 
                     log("consecutiveDraws=$numberOfDraws duplicate=${prevMovesAtThisPosition != null}")
 
@@ -220,6 +223,7 @@ fun performGame() {
                     )
 
                     lastBoard = gameBoard
+                    lastBoardAndElfs = BoardAndElfs(gameBoard, we.point, enemy.point)
                     lastPush = bestMove
 
                     while (System.nanoTime() - start < TimeUnit.MILLISECONDS.toNanos(30)) {
@@ -279,7 +283,7 @@ val globalQuestsInGameOrder = mutableListOf<Int>()
 
 private fun findBestMove(
     gameBoard: GameBoard,
-    allBoards: MutableMap<GameBoard, MutableSet<Pushes>>,
+    allBoards: MutableMap<BoardAndElfs, MutableSet<Pushes>>,
     we: Player,
     ourQuests: Int,
     step: Int,
@@ -290,6 +294,7 @@ private fun findBestMove(
     val startTime = System.nanoTime()
     val lastPush = lastPush!!
     val lastBoard = lastBoard!!
+    val lastBoardAndElfs = lastBoardAndElfs!!
     val wasDrawAtPrevMove = lastBoard == gameBoard
     if (wasDrawAtPrevMove) {
         numberOfDraws++
@@ -299,10 +304,9 @@ private fun findBestMove(
     if (!wasDrawAtPrevMove) {
         val enemyLastPush = tryFindEnemyPush(lastBoard, gameBoard, lastPush)
         if (enemyLastPush != null) {
-            //todo add elves position to gameBoard
-            allBoards.putIfAbsent(lastBoard, mutableSetOf())
-            val enemyMovesInThisPosBeforeLastMove = allBoards[lastBoard]!!.map { it.enemyPush }
-            allBoards[lastBoard]!!.add(Pushes(lastPush, enemyLastPush))
+            allBoards.putIfAbsent(lastBoardAndElfs, mutableSetOf())
+            val enemyMovesInThisPosBeforeLastMove = allBoards[lastBoardAndElfs]!!.map { it.enemyPush }
+            allBoards[lastBoardAndElfs]!!.add(Pushes(lastPush, enemyLastPush))
             if (enemyType == EnemyType.UNKNOWN || enemyType == EnemyType.STABLE) {
                 if (enemyMovesInThisPosBeforeLastMove.isEmpty()) {
                     // do nothing
@@ -314,9 +318,9 @@ private fun findBestMove(
             }
         }
     } else {
-        allBoards.putIfAbsent(lastBoard, mutableSetOf())
-        val enemyMovesInThisPosBeforeLastMove = allBoards[lastBoard]!!.map { it.enemyPush }
-        val previousPushes = allBoards[lastBoard]!!
+        allBoards.putIfAbsent(lastBoardAndElfs, mutableSetOf())
+        val enemyMovesInThisPosBeforeLastMove = allBoards[lastBoardAndElfs]!!.map { it.enemyPush }
+        val previousPushes = allBoards[lastBoardAndElfs]!!
         if (previousPushes.none { it.ourPush == lastPush }) {
             previousPushes.add(Pushes(lastPush, lastPush))
             previousPushes.add(
@@ -2032,6 +2036,7 @@ object Warmup {
             step = 0 // big limit
         )
         lastBoard = toPush.gameBoard
+        lastBoardAndElfs = BoardAndElfs(toPush.gameBoard, toPush.we.point, toPush.enemy.point)
         log("warmup once move")
         findBestMove(
             gameBoard = toMove.gameBoard,
