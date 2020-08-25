@@ -1269,9 +1269,10 @@ data class DomainInfo(
     val size: Int,
     val ourQuestBits: Int,
     val enemyQuestBits: Int,
-    val ourItems: Int,
-    val enemyItems: Int
+    val ourItemsBits: Int,
+    val enemyItemsBits: Int
 ) {
+
     companion object {
         val empty = DomainInfo(0, 0, 0, 0, 0)
     }
@@ -1476,15 +1477,15 @@ data class GameBoard(val bitBoard: BitBoard) {
         var size = 0
         var ourQuestsBits = 0
         var enemyQuestsBits = 0
-        var ourItem = 0
-        var enemyItem = 0
+        var ourItems = 0
+        var enemyItems = 0
 
         visitedPoints = visitedPoints.set(point.idx)
         cleanFront()
         writeNextFront(point)
         while (true) {
             val nextPoint = readNextFront()
-            if (nextPoint == null){
+            if (nextPoint == null) {
                 break
             }
             size++
@@ -1493,13 +1494,13 @@ data class GameBoard(val bitBoard: BitBoard) {
                 if (ourQuestsSet[item]) {
                     ourQuestsBits = ourQuestsBits.set(item)
                 }
-                ourItem++
+                ourItems = ourItems.set(item)
             }
             if (item < 0) {
                 if (enemyQuestsSet[-item]) {
                     enemyQuestsBits = enemyQuestsBits.set(-item)
                 }
-                enemyItem++
+                enemyItems = enemyItems.set(-item)
             }
             for (i in (0..3)) {
                 val direction = Direction.allDirections[i]
@@ -1512,14 +1513,11 @@ data class GameBoard(val bitBoard: BitBoard) {
                 }
             }
         }
-        val domain = DomainInfo(size, ourQuestsBits, enemyQuestsBits, ourItem, enemyItem)
-
-        for (y in (0..6)) {
-            for (x in (0..6)) {
-                if (visitedPoints[y * 7 + x]) {
-                    domains.set(domain, x, y)
-                }
-            }
+        val domain = DomainInfo(size, ourQuestsBits, enemyQuestsBits, ourItems, enemyItems)
+        while (visitedPoints != 0L) {
+            val lowBit = java.lang.Long.numberOfTrailingZeros(visitedPoints)
+            domains.set(domain, lowBit % 7, lowBit / 7)
+            visitedPoints = visitedPoints.xor(1L.shl(lowBit))
         }
 
         return domain
