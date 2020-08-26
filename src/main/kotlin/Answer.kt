@@ -598,8 +598,8 @@ data class PushAndMove(
         pooledDomains.clear()
     }
 
-    private val ourDomain = board.findDomain(ourPlayer.point, ourQuests, enemyQuests, pooledDomains)
-    private val enemyDomain = board.findDomain(enemyPlayer.point, ourQuests, enemyQuests, pooledDomains)
+    private val ourDomain = board.findDomain(ourPlayer.point, ourQuests, enemyQuests)
+    private val enemyDomain = board.findDomain(enemyPlayer.point, ourQuests, enemyQuests)
     val ourFieldOnHand = board.bitBoard.ourField()
     val enemyFieldOnHand = board.bitBoard.enemyField()
 
@@ -1432,6 +1432,7 @@ data class BitBoard(val rows: LongArray, val hands: LongArray) {
 
 data class GameBoard(val bitBoard: BitBoard) {
     private val cachedPaths = arrayOfNulls<MutableList<PathElem>>(2)
+    private val domains = Domains()
 
     companion object {
         val pooledList1 = arrayListOf<PathElem>()
@@ -1465,8 +1466,7 @@ data class GameBoard(val bitBoard: BitBoard) {
     fun findDomain(
         point: Point,
         ourQuestsSet: Int,
-        enemyQuestsSet: Int,
-        domains: Domains
+        enemyQuestsSet: Int
     ): DomainInfo {
         val cachedValue = domains.get(point)
         if (cachedValue.size > 0) {
