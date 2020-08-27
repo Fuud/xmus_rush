@@ -182,6 +182,8 @@ fun performGame() {
     Warmup.warmupOnce()
     Pushes.installRealPushes()
 
+    globalQuestsInGameOrder.clear()
+
     try {
 //        val input = Scanner(System.`in`)
         val input = Scanner(TeeInputStream(System.`in`, System.err))
@@ -345,19 +347,19 @@ private fun findBestMove(
     val ourItemsTaken = ourPaths.maxWith(compareBy { Integer.bitCount(it.itemsTakenSet) })!!.itemsTakenSet
     val ourItemsTakenSize = Integer.bitCount(ourItemsTaken)
     var ourNextQuests = ourQuests.and(ourItemsTaken.inv())
-    if (ourItemsTakenSize > 0 && we.numPlayerCards > 0){
-        val nextQuestId = 12 - we.numPlayerCards
-        if (globalQuestsInGameOrder.size > nextQuestId){
-            ourNextQuests = ourNextQuests or globalQuestsInGameOrder[nextQuestId]
-            
-            if (ourItemsTakenSize > 1 && globalQuestsInGameOrder.size > nextQuestId + 1){
-                ourNextQuests = ourNextQuests or globalQuestsInGameOrder[nextQuestId + 1]
+    if (ourItemsTakenSize > 0 && we.numPlayerCards > 3) {
+        val nextQuestId = 12 - we.numPlayerCards + 3
+        if (globalQuestsInGameOrder.size > nextQuestId) {
+            ourNextQuests = ourNextQuests.set(globalQuestsInGameOrder[nextQuestId])
 
-                if (ourItemsTakenSize > 2 && globalQuestsInGameOrder.size > nextQuestId + 2){
-                    ourNextQuests = ourNextQuests or globalQuestsInGameOrder[nextQuestId + 2]
+            if (ourItemsTakenSize > 1 && we.numPlayerCards > 4 && globalQuestsInGameOrder.size > nextQuestId + 1) {
+                ourNextQuests = ourNextQuests.set(globalQuestsInGameOrder[nextQuestId + 1])
+
+                if (ourItemsTakenSize > 2 && we.numPlayerCards > 5 && globalQuestsInGameOrder.size > nextQuestId + 2) {
+                    ourNextQuests = ourNextQuests.set(globalQuestsInGameOrder[nextQuestId + 2])
                 }
             }
-            
+
         }
     }
 
@@ -365,21 +367,27 @@ private fun findBestMove(
     val enemyItemsTaken = enemyPaths.maxWith(compareBy { Integer.bitCount(it.itemsTakenSet) })!!.itemsTakenSet
     val enemyItemsTakenSize = Integer.bitCount(enemyItemsTaken)
     var enemyNextQuests = enemyQuests.and(enemyItemsTaken.inv())
-    if (enemyItemsTakenSize > 0 && enemy.numPlayerCards > 0){
-        val nextQuestId = 12 - enemy.numPlayerCards
-        if (globalQuestsInGameOrder.size > nextQuestId){
-            enemyNextQuests = enemyNextQuests or globalQuestsInGameOrder[nextQuestId]
+    if (enemyItemsTakenSize > 0 && enemy.numPlayerCards > 3) {
+        val nextQuestId = 12 - enemy.numPlayerCards + 3
+        if (globalQuestsInGameOrder.size > nextQuestId) {
+            enemyNextQuests = enemyNextQuests.set(globalQuestsInGameOrder[nextQuestId])
 
-            if (enemyItemsTakenSize > 1 && globalQuestsInGameOrder.size > nextQuestId + 1){
-                enemyNextQuests = enemyNextQuests or globalQuestsInGameOrder[nextQuestId + 1]
+            if (enemyItemsTakenSize > 1 && enemy.numPlayerCards > 4 && globalQuestsInGameOrder.size > nextQuestId + 1) {
+                enemyNextQuests = enemyNextQuests.set(globalQuestsInGameOrder[nextQuestId + 1])
 
-                if (enemyItemsTakenSize > 2 && globalQuestsInGameOrder.size > nextQuestId + 2){
-                    enemyNextQuests = enemyNextQuests or globalQuestsInGameOrder[nextQuestId + 2]
+                if (enemyItemsTakenSize > 2 && enemy.numPlayerCards > 5 && globalQuestsInGameOrder.size > nextQuestId + 2) {
+                    enemyNextQuests = enemyNextQuests.set(globalQuestsInGameOrder[nextQuestId + 2])
                 }
             }
 
         }
     }
+
+    log(
+        "Our next quests: ${Items.indexesToNames(ourNextQuests)};  enemy next quests: ${Items.indexesToNames(
+            enemyNextQuests
+        )}"
+    )
 
     val ends = ourPaths.filter { Integer.bitCount(it.itemsTakenSet) == ourItemsTakenSize }
         .map { it.point }.toHashSet()
@@ -663,7 +671,7 @@ data class PushAndMove(
         }
 
 //        val secondaryScore = (pushOutItems(push) * 100 + space(push)).toDouble() / (34 * 100 + 48)
-        val secondaryScore = (space(push).toDouble() + itemOnHandScore(push) * 25) / (50+25)
+        val secondaryScore = (space(push).toDouble() + itemOnHandScore(push) * 25) / (50 + 25)
         val gameEstimate = if (push.pushes.collision()) {
             if (numberOfDraws == 0) {
                 computeEstimate(ourItemRemain, enemyItemRemain, Math.max(pushesRemain - 1, 0), secondaryScore)
@@ -2253,6 +2261,16 @@ object Items {
     )
 
     fun index(name: String) = items.indexOf(name) + 1
+
+    fun indexesToNames(set: Int): List<String> {
+        val result = mutableListOf<String>()
+        for (itemName in items) {
+            if (set[index(itemName)]) {
+                result.add(itemName)
+            }
+        }
+        return result
+    }
 
     val NO_ITEM = 0
 }
