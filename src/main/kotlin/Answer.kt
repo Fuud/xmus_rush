@@ -341,21 +341,57 @@ private fun findBestMove(
         }
     }
 
-    val paths = gameBoard.findPaths(we, ourQuests)
-    val itemsTaken = paths.maxWith(compareBy { Integer.bitCount(it.itemsTakenSet) })!!.itemsTakenSet
-    val itemsTakenSize = Integer.bitCount(itemsTaken)
-    val ourNextQuests = ourQuests.and(itemsTaken.inv())
-    val ends = paths.filter { Integer.bitCount(it.itemsTakenSet) == itemsTakenSize }
+    val ourPaths = gameBoard.findPaths(we, ourQuests)
+    val ourItemsTaken = ourPaths.maxWith(compareBy { Integer.bitCount(it.itemsTakenSet) })!!.itemsTakenSet
+    val ourItemsTakenSize = Integer.bitCount(ourItemsTaken)
+    var ourNextQuests = ourQuests.and(ourItemsTaken.inv())
+    if (ourItemsTakenSize > 0 && we.numPlayerCards > 0){
+        val nextQuestId = 12 - we.numPlayerCards
+        if (globalQuestsInGameOrder.size > nextQuestId){
+            ourNextQuests = ourNextQuests or globalQuestsInGameOrder[nextQuestId]
+            
+            if (ourItemsTakenSize > 1 && globalQuestsInGameOrder.size > nextQuestId + 1){
+                ourNextQuests = ourNextQuests or globalQuestsInGameOrder[nextQuestId + 1]
+
+                if (ourItemsTakenSize > 2 && globalQuestsInGameOrder.size > nextQuestId + 2){
+                    ourNextQuests = ourNextQuests or globalQuestsInGameOrder[nextQuestId + 2]
+                }
+            }
+            
+        }
+    }
+
+    val enemyPaths = gameBoard.findPaths(enemy, enemyQuests)
+    val enemyItemsTaken = enemyPaths.maxWith(compareBy { Integer.bitCount(it.itemsTakenSet) })!!.itemsTakenSet
+    val enemyItemsTakenSize = Integer.bitCount(enemyItemsTaken)
+    var enemyNextQuests = enemyQuests.and(enemyItemsTaken.inv())
+    if (enemyItemsTakenSize > 0 && enemy.numPlayerCards > 0){
+        val nextQuestId = 12 - enemy.numPlayerCards
+        if (globalQuestsInGameOrder.size > nextQuestId){
+            enemyNextQuests = enemyNextQuests or globalQuestsInGameOrder[nextQuestId]
+
+            if (enemyItemsTakenSize > 1 && globalQuestsInGameOrder.size > nextQuestId + 1){
+                enemyNextQuests = enemyNextQuests or globalQuestsInGameOrder[nextQuestId + 1]
+
+                if (enemyItemsTakenSize > 2 && globalQuestsInGameOrder.size > nextQuestId + 2){
+                    enemyNextQuests = enemyNextQuests or globalQuestsInGameOrder[nextQuestId + 2]
+                }
+            }
+
+        }
+    }
+
+    val ends = ourPaths.filter { Integer.bitCount(it.itemsTakenSet) == ourItemsTakenSize }
         .map { it.point }.toHashSet()
     if (ends.size == 1) {
-        return paths.find { Integer.bitCount(it.itemsTakenSet) == itemsTakenSize }!!
+        return ourPaths.find { Integer.bitCount(it.itemsTakenSet) == ourItemsTakenSize }!!
     }
     ends.forEach { moveScores[it] = 0.0 }
 
     val timeLimit = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 42)
 
     val possibleQuestCoef = if (we.numPlayerCards - Integer.bitCount(ourQuests) > 0) {
-        itemsTakenSize * 1.0 / (we.numPlayerCards - Integer.bitCount(ourQuests))
+        ourItemsTakenSize * 1.0 / (we.numPlayerCards - Integer.bitCount(ourQuests))
     } else {
         0.0
     }
@@ -376,7 +412,7 @@ private fun findBestMove(
             we,
             ourNextQuests,
             enemy,
-            enemyQuests
+            enemyNextQuests
         )
         if (pushAndMove.board === gameBoard) {
             continue
@@ -415,8 +451,8 @@ private fun findBestMove(
         maxScoreByPoint[pathElem.point.idx]!!
     }.thenComparing(scoreComparator)
 
-    val bestPath = paths.maxWith(pathsComparator)
-    val maxByAverageScore = paths.maxWith(compareBy<PathElem> { pathElem ->
+    val bestPath = ourPaths.maxWith(pathsComparator)
+    val maxByAverageScore = ourPaths.maxWith(compareBy<PathElem> { pathElem ->
         Integer.bitCount(pathElem.itemsTakenSet)
     }.thenComparing(scoreComparator))
     if (maxByAverageScore?.point != bestPath?.point) {
@@ -627,7 +663,7 @@ data class PushAndMove(
         }
 
 //        val secondaryScore = (pushOutItems(push) * 100 + space(push)).toDouble() / (34 * 100 + 48)
-        val secondaryScore = (space(push).toDouble() + itemOnHandScore(push) * 5) / 55
+        val secondaryScore = (space(push).toDouble() + itemOnHandScore(push) * 25) / (50+25)
         val gameEstimate = if (push.pushes.collision()) {
             if (numberOfDraws == 0) {
                 computeEstimate(ourItemRemain, enemyItemRemain, Math.max(pushesRemain - 1, 0), secondaryScore)
