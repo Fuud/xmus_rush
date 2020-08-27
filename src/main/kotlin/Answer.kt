@@ -362,9 +362,10 @@ private fun findBestMove(
 
         }
     }
+    val ourNextNumCards = we.numPlayerCards - ourItemsTakenSize
 
-    val enemyPaths = gameBoard.findPaths(enemy, enemyQuests)
-    val enemyItemsTaken = enemyPaths.maxWith(compareBy { Integer.bitCount(it.itemsTakenSet) })!!.itemsTakenSet
+    val enemyDomain = gameBoard.findDomain(enemy.point, ourQuests, enemyQuests)
+    val enemyItemsTaken = enemyDomain.enemyQuestBits
     val enemyItemsTakenSize = Integer.bitCount(enemyItemsTaken)
     var enemyNextQuests = enemyQuests.and(enemyItemsTaken.inv())
     if (enemyItemsTakenSize > 0 && enemy.numPlayerCards > 3) {
@@ -382,6 +383,7 @@ private fun findBestMove(
 
         }
     }
+    val enemyNextNumCards = enemy.numPlayerCards - enemyItemsTakenSize
 
     log(
         "Our next quests: ${Items.indexesToNames(ourNextQuests)};  enemy next quests: ${Items.indexesToNames(
@@ -407,6 +409,7 @@ private fun findBestMove(
     for (p in ends) {
         movePushScores[p.idx].fill(0.0)
     }
+    val nextEnemy= enemy.copy(numPlayerCards = enemyNextNumCards)
     for (pushes in Pushes.allPushes) {
         if (System.nanoTime() - startTime > timeLimit && count > 0) {
             log("stop computePushes, computed $count pushes")
@@ -419,7 +422,7 @@ private fun findBestMove(
             pushes,
             we,
             ourNextQuests,
-            enemy,
+            nextEnemy,
             enemyNextQuests
         )
         if (pushAndMove.board === gameBoard) {
@@ -427,7 +430,7 @@ private fun findBestMove(
         }
         moveDomains.clear()
         ends.forEach { point ->
-            val fake = we.copy(playerX = point.x, playerY = point.y).push(pushes)
+            val fake = we.copy(playerX = point.x, playerY = point.y, numPlayerCards = ourNextNumCards).push(pushes)
             val score = pushAndMove.copy(ourPlayer = fake).score
             moveScores[point] = moveScores[point]!! + score
             movePushScores[point.idx][pushes.ourPush.idx] += score
