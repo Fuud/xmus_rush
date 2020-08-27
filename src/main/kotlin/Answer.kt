@@ -3,6 +3,8 @@
 import BitField.Companion.bitField
 import Direction.*
 import Items.NO_ITEM
+import PushSelectors.itemCountDiff
+import PushSelectors.itemOnHandScore
 import PushSelectors.itemsCountDiff
 import PushSelectors.pushOutItems
 import PushSelectors.space
@@ -590,16 +592,8 @@ data class PushAndMove(
     val enemyQuests: Int
 ) {
 
-    companion object {
-        private val pooledDomains = Domains()
-    }
-
-    init {
-        pooledDomains.clear()
-    }
-
-    private val ourDomain = board.findDomain(ourPlayer.point, ourQuests, enemyQuests)
-    private val enemyDomain = board.findDomain(enemyPlayer.point, ourQuests, enemyQuests)
+    val ourDomain = board.findDomain(ourPlayer.point, ourQuests, enemyQuests)
+    val enemyDomain = board.findDomain(enemyPlayer.point, ourQuests, enemyQuests)
     val ourFieldOnHand = board.bitBoard.ourField()
     val enemyFieldOnHand = board.bitBoard.enemyField()
 
@@ -634,7 +628,7 @@ data class PushAndMove(
         }
 
 //        val secondaryScore = (pushOutItems(push) * 100 + space(push)).toDouble() / (34 * 100 + 48)
-        val secondaryScore = space(push).toDouble() / 50
+        val secondaryScore = (space(push).toDouble() + itemOnHandScore(push) * 5) / 55
         val gameEstimate = if (push.pushes.collision()) {
             if (numberOfDraws == 0) {
                 computeEstimate(ourItemRemain, enemyItemRemain, Math.max(pushesRemain - 1, 0), secondaryScore)
@@ -768,12 +762,12 @@ private fun selectPivotSolver(
     var haveAnyChances = false
     for (push in pushes) {
         val score = (push.score)
-        if(score>0) {
+        if (score > 0) {
             haveAnyChances = true
         }
         a[enemyPushes.indexOf(push.pushes.enemyPush)][ourPushes.indexOf(push.pushes.ourPush)] = score
     }
-    if(!haveAnyChances) {
+    if (!haveAnyChances) {
         log("there are no chances to win ;(")
         return ourPushes[0]
     }
@@ -841,7 +835,7 @@ private fun selectPivotSolver(
                 // step #4
                 val pivot = a[p][q]
 
-                corner = r(corner -bottom[p] * right[q] / pivot)
+                corner = r(corner - bottom[p] * right[q] / pivot)
 
                 for (i in (0 until ENEMY_SIZE)) {
                     if (i != p) {
@@ -1132,6 +1126,29 @@ object PushSelectors {
     val itemsCountDiffMin = { pushesAndMoves: List<PushAndMove> -> itemCountDiff(pushesAndMoves).min()!! }
     val itemsCountDiffAvg = { pushesAndMoves: List<PushAndMove> -> itemCountDiff(pushesAndMoves).average() }
 
+    fun itemOnHandScore(push: PushAndMove): Int {
+        val ourScore = if (push.ourDomain.hasAccessToBorder && push.ourFieldOnHand.ourQuestItem(
+                push.ourPlayer.playerId,
+                push.ourQuests
+            )
+        ) {
+            1
+        } else {
+            0
+        }
+        val enemyScore = if (push.enemyDomain.hasAccessToBorder && push.enemyFieldOnHand.ourQuestItem(
+                push.enemyPlayer.playerId,
+                push.enemyQuests
+            )
+        ) {
+            1
+        } else {
+            0
+        }
+
+        return ourScore - enemyScore
+    }
+
     fun pushOutItems(push: PushAndMove): Int {
         val ourScore = pushOutItems(push, push.ourPlayer.playerId, push.ourQuests)
         val enemyScore = pushOutItems(push, push.enemyPlayer.playerId, push.enemyQuests)
@@ -1139,26 +1156,13 @@ object PushSelectors {
     }
 
     private fun pushOutItems(push: PushAndMove, playerId: Int, quests: Int): Int {
-        fun BitField.holdOurQuestItem(playerId: Int, quests: Int): Boolean {
-            val item = this.item
-            return if (item == 0) {
-                return false
-            } else if (playerId == 0 && item > 0) {
-                quests[item]
-            } else if (playerId == 1 && item < 0) {
-                quests[-item]
-            } else {
-                false
-            }
-        }
-
         val fieldOnHand = if (playerId == 0) {
             push.ourFieldOnHand
         } else {
             push.enemyFieldOnHand
         }
         val onHandScore =
-            if (fieldOnHand.holdOurQuestItem(playerId, quests)) {
+            if (fieldOnHand.ourQuestItem(playerId, quests)) {
                 16
             } else {
                 0
@@ -1168,7 +1172,7 @@ object PushSelectors {
         //todo 3 queries are better than 49 ones
         for (y in (0..6)) {
             for (x in (0..6)) {
-                if (push.board.bitBoard.get(y, x).holdOurQuestItem(playerId, quests)) {
+                if (push.board.bitBoard.get(y, x).ourQuestItem(playerId, quests)) {
                     otherItemsScore += max(abs(3 - x), abs(3 - y)) * max(abs(3 - x), abs(3 - y))
                 }
             }
@@ -1247,6 +1251,19 @@ data class BitField private constructor(val bits: Long) {
     val item = (bits.shr(4) - 12).toInt()
 
     val tile = bits.and(TILE_MASK).toInt()
+
+    fun ourQuestItem(playerId: Int, quests: Int): Boolean {
+        val item = this.item
+        return if (item == 0) {
+            return false
+        } else if (playerId == 0 && item > 0) {
+            quests[item]
+        } else if (playerId == 1 && item < 0) {
+            quests[-item]
+        } else {
+            false
+        }
+    }
 }
 
 private operator fun Int.get(index: Int): Boolean {
@@ -1270,11 +1287,12 @@ data class DomainInfo(
     val ourQuestBits: Int,
     val enemyQuestBits: Int,
     val ourItemsBits: Int,
-    val enemyItemsBits: Int
+    val enemyItemsBits: Int,
+    val hasAccessToBorder: Boolean
 ) {
 
     companion object {
-        val empty = DomainInfo(0, 0, 0, 0, 0)
+        val empty = DomainInfo(0, 0, 0, 0, 0, false)
     }
 
     fun getOurQuestsCount(): Int {
@@ -1443,21 +1461,21 @@ data class GameBoard(val bitBoard: BitBoard) {
         var pooledFrontWritePos = 0
 
         fun readNextFront(): Point? {
-            return if (pooledFrontWritePos == pooledFrontReadPos){
+            return if (pooledFrontWritePos == pooledFrontReadPos) {
                 null
-            }else {
+            } else {
                 val result = pooledFront[pooledFrontReadPos]
                 pooledFrontReadPos++
                 result
             }
         }
 
-        fun writeNextFront(point: Point){
+        fun writeNextFront(point: Point) {
             pooledFront[pooledFrontWritePos] = point
             pooledFrontWritePos++
         }
 
-        fun cleanFront(){
+        fun cleanFront() {
             pooledFrontReadPos = 0
             pooledFrontWritePos = 0
         }
@@ -1481,6 +1499,7 @@ data class GameBoard(val bitBoard: BitBoard) {
         var enemyItems = 0
 
         visitedPoints = visitedPoints.set(point.idx)
+        var hasAccessToBorder = false
         cleanFront()
         writeNextFront(point)
         while (true) {
@@ -1488,6 +1507,7 @@ data class GameBoard(val bitBoard: BitBoard) {
             if (nextPoint == null) {
                 break
             }
+            hasAccessToBorder = hasAccessToBorder || point.isBorder
             size++
             val item = bitBoard[nextPoint].item
             if (item > 0) {
@@ -1513,7 +1533,7 @@ data class GameBoard(val bitBoard: BitBoard) {
                 }
             }
         }
-        val domain = DomainInfo(size, ourQuestsBits, enemyQuestsBits, ourItems, enemyItems)
+        val domain = DomainInfo(size, ourQuestsBits, enemyQuestsBits, ourItems, enemyItems, hasAccessToBorder)
         while (visitedPoints != 0L) {
             val lowBit = java.lang.Long.numberOfTrailingZeros(visitedPoints)
             domains.set(domain, lowBit % 7, lowBit / 7)
@@ -1707,6 +1727,7 @@ private operator fun <T> List<List<T>>.get(point: Point): T {
 
 @Suppress("DataClassPrivateConstructor")
 data class Point private constructor(val x: Int, val y: Int) {
+    val isBorder: Boolean = (x == 0) || (y == 0) || (x == 6) || (y == 6)
     val idx = y * 7 + x
     var up: Point? = null
     var down: Point? = null
