@@ -3,7 +3,6 @@
 import BitField.Companion.bitField
 import Direction.*
 import Items.NO_ITEM
-import PushSelectors.itemCountDiff
 import PushSelectors.itemOnHandScore
 import PushSelectors.itemsCountDiff
 import PushSelectors.pushOutItems
@@ -810,7 +809,7 @@ private fun selectPivotSolver(
                         var min_3c = Double.MAX_VALUE
                         for (j in (0 until OUR_SIZE)) {
                             if (a[i][j] > 0) {
-                                val val_3c = right[j] / a[i][j]
+                                val val_3c = r(right[j] / a[i][j])
                                 if (val_3c < min_3c) {
                                     min_3c = val_3c
                                     p = i
