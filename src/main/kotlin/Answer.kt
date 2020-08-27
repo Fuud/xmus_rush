@@ -1284,16 +1284,29 @@ private fun Long.set(index: Int): Long {
 }
 
 data class DomainInfo(
-    val size: Int,
     val ourQuestBits: Int,
     val enemyQuestBits: Int,
     val ourItemsBits: Int,
     val enemyItemsBits: Int,
-    val hasAccessToBorder: Boolean
+    val domainBits: Long
 ) {
 
+    val size: Int = java.lang.Long.bitCount(domainBits)
+    val hasAccessToBorder = domainBits.and(BORDER) != 0L
+
     companion object {
-        val empty = DomainInfo(0, 0, 0, 0, 0, false)
+        val empty = DomainInfo(0, 0, 0, 0, 0L)
+        val UP_BORDER: Long =
+            0b0000000000000000000000000000000000000000001111111
+        val LEFT_BORDER: Long =
+            0b0000001000000100000010000001000000100000010000001
+        val RIGHT_BORDER: Long =
+            0b1000000100000010000001000000100000010000001000000
+        val DOWN_BORDER: Long =
+            0b1111111000000000000000000000000000000000000000000
+        val HORIZONTAL_BORDER = UP_BORDER.or(DOWN_BORDER)
+        val VERTICAL_BORDER = RIGHT_BORDER.or(LEFT_BORDER)
+        val BORDER = VERTICAL_BORDER.or(HORIZONTAL_BORDER)
     }
 
     fun getOurQuestsCount(): Int {
@@ -1493,14 +1506,12 @@ data class GameBoard(val bitBoard: BitBoard) {
         }
         visitedPoints = 0L
 
-        var size = 0
         var ourQuestsBits = 0
         var enemyQuestsBits = 0
         var ourItems = 0
         var enemyItems = 0
 
         visitedPoints = visitedPoints.set(point.idx)
-        var hasAccessToBorder = false
         cleanFront()
         writeNextFront(point)
         while (true) {
@@ -1508,8 +1519,6 @@ data class GameBoard(val bitBoard: BitBoard) {
             if (nextPoint == null) {
                 break
             }
-            hasAccessToBorder = hasAccessToBorder || point.isBorder
-            size++
             val item = bitBoard[nextPoint].item
             if (item > 0) {
                 if (ourQuestsSet[item]) {
@@ -1534,7 +1543,7 @@ data class GameBoard(val bitBoard: BitBoard) {
                 }
             }
         }
-        val domain = DomainInfo(size, ourQuestsBits, enemyQuestsBits, ourItems, enemyItems, hasAccessToBorder)
+        val domain = DomainInfo(ourQuestsBits, enemyQuestsBits, ourItems, enemyItems, visitedPoints)
         while (visitedPoints != 0L) {
             val lowBit = java.lang.Long.numberOfTrailingZeros(visitedPoints)
             domains.set(domain, lowBit % 7, lowBit / 7)
