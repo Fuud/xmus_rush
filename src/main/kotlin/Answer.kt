@@ -797,6 +797,7 @@ private fun selectPivotSolver(
     val right = DoubleArray(OUR_SIZE) { idx -> 1.0 }
 
     var corner: Double = 0.0
+    var pivotCount =0
     val duration = measureNanoTime {
         while (bottom.any { it < 0 } /*step #6*/) {
             var p = -1
@@ -833,6 +834,7 @@ private fun selectPivotSolver(
             run {
                 // step #4
                 val pivot = a[p][q]
+                pivotCount++
 
                 corner = r(corner - bottom[p] * right[q] / pivot)
 
@@ -882,7 +884,7 @@ private fun selectPivotSolver(
     //step 7
     val resultScore = 1 / corner
 
-    log("resultScore = $resultScore, duration = ${TimeUnit.NANOSECONDS.toMillis(duration)}")
+    log("resultScore = $resultScore, duration = ${TimeUnit.NANOSECONDS.toMillis(duration)}, pivots = $pivotCount")
 
     val ourStrategy = DoubleArray(OUR_SIZE) { 0.0 }
     val enemyStrategy = DoubleArray(ENEMY_SIZE) { 0.0 }
