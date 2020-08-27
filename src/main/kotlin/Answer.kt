@@ -723,7 +723,9 @@ private fun selectPivotSolver(
     log("pivotSolver: prev pushes at this position: $prevPushesAtThisPosition")
     log("pivotSolver: enemyType: $enemyType")
 
-    fun r(value: Double) = if (value > -0.0000001 && value < 0.0000001) 0.0 else value
+    var threshold = 0.0000001
+    fun r(value: Double): Double =
+        if (value > -threshold && value < threshold) 0.0 else value
 
     val weLoseOrDrawAtEarlyGame = (we.numPlayerCards > enemy.numPlayerCards
             || (we.numPlayerCards == enemy.numPlayerCards && step < 50))
@@ -797,7 +799,7 @@ private fun selectPivotSolver(
     val right = DoubleArray(OUR_SIZE) { idx -> 1.0 }
 
     var corner: Double = 0.0
-    var pivotCount =0
+    var pivotCount = 0
     val duration = measureNanoTime {
         while (bottom.any { it < 0 } /*step #6*/) {
             var p = -1
@@ -869,6 +871,10 @@ private fun selectPivotSolver(
                             a[i][j] = r(1 / a[i][j])
                         }
                     }
+                }
+                if (pivotCount % 128 == 0) {
+                    log("#$pivotCount pivot was chosen, so increase threshold")
+                    threshold *= 10
                 }
             }
 
