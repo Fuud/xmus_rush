@@ -162,7 +162,6 @@ val probablyLogCompilation: () -> Unit = run {
 
 val rand = Random(777)
 
-val moveDomains = Domains()
 val moveScores = Point.points.flatten()
     .map { it to 0.0 }
     .toMap().toMutableMap()
@@ -385,11 +384,11 @@ private fun findBestMove(
     }
     val enemyNextNumCards = enemy.numPlayerCards - enemyItemsTakenSize
 
-    log(
-        "Our next quests: ${Items.indexesToNames(ourNextQuests)};  enemy next quests: ${Items.indexesToNames(
-            enemyNextQuests
-        )}"
-    )
+    run {
+        val ourQuests = Items.indexesToNames(ourNextQuests)
+        val enemyQuests = Items.indexesToNames(enemyNextQuests)
+        log("Our next quests: $ourQuests;  enemy next quests: $enemyQuests}")
+    }
 
     val ends = ourPaths.filter { Integer.bitCount(it.itemsTakenSet) == ourItemsTakenSize }
         .map { it.point }.toHashSet()
@@ -409,7 +408,7 @@ private fun findBestMove(
     for (p in ends) {
         movePushScores[p.idx].fill(0.0)
     }
-    val nextEnemy= enemy.copy(numPlayerCards = enemyNextNumCards)
+    val nextEnemy = enemy.copy(numPlayerCards = enemyNextNumCards)
     for (pushes in Pushes.allPushes) {
         if (System.nanoTime() - startTime > timeLimit && count > 0) {
             log("stop computePushes, computed $count pushes")
@@ -428,7 +427,6 @@ private fun findBestMove(
         if (pushAndMove.board === gameBoard) {
             continue
         }
-        moveDomains.clear()
         ends.forEach { point ->
             val fake = we.copy(playerX = point.x, playerY = point.y, numPlayerCards = ourNextNumCards).push(pushes)
             val score = pushAndMove.copy(ourPlayer = fake).score
@@ -1337,6 +1335,8 @@ private fun Long.set(index: Int): Long {
 }
 
 data class DomainInfo(
+    val inputOurQuests: Int,
+    val inputEnemyQuests: Int,
     val ourQuestBits: Int,
     val enemyQuestBits: Int,
     val ourItemsBits: Int,
@@ -1348,7 +1348,6 @@ data class DomainInfo(
     val hasAccessToBorder = domainBits.and(BORDER) != 0L
 
     companion object {
-        val empty = DomainInfo(0, 0, 0, 0, 0L)
         val UP_BORDER: Long =
             0b0000000000000000000000000000000000000000001111111
         val LEFT_BORDER: Long =
@@ -1379,18 +1378,35 @@ data class PathElem(
 )
 
 class Domains {
-    private val domains = Array(49) { DomainInfo.empty }
+    private val domains = Array<Array<DomainInfo?>?>(10) { null }
 
-    fun clear() {
-        Arrays.fill(domains, DomainInfo.empty)
-    }
-
-    fun get(point: Point): DomainInfo {
-        return domains[point.idx]
+    fun get(point: Point, ourQuestsSet: Int, enemyQuestsSet: Int): DomainInfo? {
+        for (i in 0 until 10) {
+            val arrayOfDomainInfos = domains[i]
+            if (arrayOfDomainInfos == null) {
+                return null
+            }
+            val info = arrayOfDomainInfos[point.idx]
+            if (info == null) {
+                return null
+            }
+            if (info.inputOurQuests == ourQuestsSet && info.inputEnemyQuests == enemyQuestsSet) {
+                return info
+            }
+        }
+        return null
     }
 
     fun set(domain: DomainInfo, x: Int, y: Int) {
-        domains[y * 7 + x] = domain
+        for (i in 0 until 10) {
+            if (domains[i] == null) {
+                domains[i] = Array(49) { null }
+            }
+            val arrayOfDomainInfos = domains[i]!!
+            if (arrayOfDomainInfos[y * 7 + x] == null){
+                arrayOfDomainInfos[y * 7 + x] =  domain
+            }
+        }
     }
 
 }
@@ -1553,8 +1569,8 @@ data class GameBoard(val bitBoard: BitBoard) {
         ourQuestsSet: Int,
         enemyQuestsSet: Int
     ): DomainInfo {
-        val cachedValue = domains.get(point)
-        if (cachedValue.size > 0) {
+        val cachedValue = domains.get(point, ourQuestsSet, enemyQuestsSet)
+        if (cachedValue != null) {
             return cachedValue
         }
         visitedPoints = 0L
@@ -1596,7 +1612,14 @@ data class GameBoard(val bitBoard: BitBoard) {
                 }
             }
         }
-        val domain = DomainInfo(ourQuestsBits, enemyQuestsBits, ourItems, enemyItems, visitedPoints)
+        val domain = DomainInfo(
+            inputOurQuests = ourQuestsSet,
+            inputEnemyQuests = enemyQuestsSet,
+            ourQuestBits = ourQuestsBits,
+            enemyQuestBits = enemyQuestsBits,
+            ourItemsBits = ourItems,
+            enemyItemsBits = enemyItems,
+            domainBits = visitedPoints)
         while (visitedPoints != 0L) {
             val lowBit = java.lang.Long.numberOfTrailingZeros(visitedPoints)
             domains.set(domain, lowBit % 7, lowBit / 7)
