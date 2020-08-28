@@ -310,25 +310,27 @@ private fun findBestMove(
         if (enemyLastPush != null) {
             allBoards.putIfAbsent(lastBoardAndElfs, mutableSetOf())
             val enemyMovesInThisPosBeforeLastMove = allBoards[lastBoardAndElfs]!!.map { it.enemyPush }
-            allBoards[lastBoardAndElfs]!!.add(Pushes(lastPush, enemyLastPush))
-            if (enemyType == EnemyType.UNKNOWN) {
-                if (enemyMovesInThisPosBeforeLastMove.isEmpty()) {
-                    // do nothing
-                } else if (enemyLastPush in enemyMovesInThisPosBeforeLastMove) {
-                    enemyType = EnemyType.STABLE
-                } else {
-                    enemyType = EnemyType.UNSTABLE
+            if (enemyMovesInThisPosBeforeLastMove.isNotEmpty()) {
+                allBoards[lastBoardAndElfs]!!.add(Pushes(lastPush, enemyLastPush))
+                if (enemyType == EnemyType.UNKNOWN) {
+                    if (enemyMovesInThisPosBeforeLastMove.isEmpty()) {
+                        // do nothing
+                    } else if (enemyLastPush in enemyMovesInThisPosBeforeLastMove) {
+                        enemyType = EnemyType.STABLE
+                    } else {
+                        enemyType = EnemyType.UNSTABLE
+                    }
                 }
-            }
 
-            if (enemyType == EnemyType.STABLE) {
-                if (enemyLastPush !in enemyMovesInThisPosBeforeLastMove) {
-                    enemyType = EnemyType.WINDY
+                if (enemyType == EnemyType.STABLE) {
+                    if (enemyLastPush !in enemyMovesInThisPosBeforeLastMove) {
+                        enemyType = EnemyType.WINDY
+                    }
                 }
-            }
-            if (enemyType == EnemyType.UNSTABLE) {
-                if (enemyLastPush in enemyMovesInThisPosBeforeLastMove) {
-                    enemyType = EnemyType.WINDY
+                if (enemyType == EnemyType.UNSTABLE) {
+                    if (enemyLastPush in enemyMovesInThisPosBeforeLastMove) {
+                        enemyType = EnemyType.WINDY
+                    }
                 }
             }
         }
@@ -811,14 +813,16 @@ private fun selectPivotSolver(
             } else {
                 pushes
             }
-        } else {
-            if (enemyType == EnemyType.STABLE && weLoseOrDrawAtEarlyGame) {
+        } else if (enemyType == EnemyType.STABLE){
+            if (weLoseOrDrawAtEarlyGame) {
                 log("filter out our pushes: $prevOurPushes and enemy pushes: $prevEnemyPushes")
                 pushes.filter { it.pushes.enemyPush in prevEnemyPushes && it.pushes.ourPush !in prevOurPushes }
             } else {
                 log("filter out enemy pushes: $prevEnemyPushes")
                 pushes.filter { it.pushes.enemyPush in prevEnemyPushes }
             }
+        }else {
+            pushes
         }
     }
 
