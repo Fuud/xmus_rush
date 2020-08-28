@@ -76,7 +76,9 @@ enum class EnemyType {
 
     STABLE,
 
-    UNSTABLE
+    UNSTABLE,
+
+    WINDY
 }
 
 var enemyType = EnemyType.UNKNOWN
@@ -309,7 +311,7 @@ private fun findBestMove(
             allBoards.putIfAbsent(lastBoardAndElfs, mutableSetOf())
             val enemyMovesInThisPosBeforeLastMove = allBoards[lastBoardAndElfs]!!.map { it.enemyPush }
             allBoards[lastBoardAndElfs]!!.add(Pushes(lastPush, enemyLastPush))
-            if (enemyType == EnemyType.UNKNOWN || enemyType == EnemyType.STABLE) {
+            if (enemyType == EnemyType.UNKNOWN) {
                 if (enemyMovesInThisPosBeforeLastMove.isEmpty()) {
                     // do nothing
                 } else if (enemyLastPush in enemyMovesInThisPosBeforeLastMove) {
@@ -318,10 +320,20 @@ private fun findBestMove(
                     enemyType = EnemyType.UNSTABLE
                 }
             }
+
+            if (enemyType == EnemyType.STABLE) {
+                if (enemyLastPush !in enemyMovesInThisPosBeforeLastMove) {
+                    enemyType = EnemyType.WINDY
+                }
+            }
+            if (enemyType == EnemyType.UNSTABLE) {
+                if (enemyLastPush in enemyMovesInThisPosBeforeLastMove) {
+                    enemyType = EnemyType.WINDY
+                }
+            }
         }
     } else {
         allBoards.putIfAbsent(lastBoardAndElfs, mutableSetOf())
-        val enemyMovesInThisPosBeforeLastMove = allBoards[lastBoardAndElfs]!!.map { it.enemyPush }
         val previousPushes = allBoards[lastBoardAndElfs]!!
         if (previousPushes.none { it.ourPush == lastPush }) {
             previousPushes.add(Pushes(lastPush, lastPush))
@@ -329,14 +341,24 @@ private fun findBestMove(
                 Pushes(lastPush, lastPush.copy(direction = lastPush.direction.opposite))
             )
         }
-        if (enemyType == EnemyType.UNKNOWN || enemyType == EnemyType.STABLE) {
-            if (enemyMovesInThisPosBeforeLastMove.isNotEmpty()) {
-                val wasDrawOnSameLine = previousPushes.all { it.collision() } &&
-                        previousPushes.all { it.ourPush.rowColumn == previousPushes.first().ourPush.rowColumn }
+        if (previousPushes.isNotEmpty()) {
+            val wasDrawOnSameLine = previousPushes.all { it.collision() } &&
+                    previousPushes.all { it.ourPush.rowColumn == previousPushes.first().ourPush.rowColumn }
+            if (enemyType == EnemyType.UNKNOWN) {
                 if (wasDrawOnSameLine) {
                     enemyType = EnemyType.STABLE
                 } else {
                     enemyType = EnemyType.UNSTABLE
+                }
+            }
+            if (enemyType == EnemyType.STABLE) {
+                if (!wasDrawOnSameLine) {
+                    enemyType = EnemyType.WINDY
+                }
+            }
+            if (enemyType == EnemyType.UNSTABLE) {
+                if (wasDrawOnSameLine) {
+                    enemyType = EnemyType.WINDY
                 }
             }
         }
@@ -1403,8 +1425,8 @@ class Domains {
                 domains[i] = Array(49) { null }
             }
             val arrayOfDomainInfos = domains[i]!!
-            if (arrayOfDomainInfos[y * 7 + x] == null){
-                arrayOfDomainInfos[y * 7 + x] =  domain
+            if (arrayOfDomainInfos[y * 7 + x] == null) {
+                arrayOfDomainInfos[y * 7 + x] = domain
             }
         }
     }
@@ -1619,7 +1641,8 @@ data class GameBoard(val bitBoard: BitBoard) {
             enemyQuestBits = enemyQuestsBits,
             ourItemsBits = ourItems,
             enemyItemsBits = enemyItems,
-            domainBits = visitedPoints)
+            domainBits = visitedPoints
+        )
         while (visitedPoints != 0L) {
             val lowBit = java.lang.Long.numberOfTrailingZeros(visitedPoints)
             domains.set(domain, lowBit % 7, lowBit / 7)
