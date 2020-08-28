@@ -802,7 +802,7 @@ private fun selectPivotSolver(
     val prevEnemyPushes = prevPushesAtThisPosition?.map { it.enemyPush }
     val prevOurPushes = prevPushesAtThisPosition?.map { it.ourPush }
 
-    val pushes = if (prevEnemyPushes == null) {
+    val pushes = if (prevEnemyPushes == null || prevEnemyPushes.isEmpty()) {
         pushes
     } else {
         prevOurPushes!!
