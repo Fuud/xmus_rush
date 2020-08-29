@@ -3,6 +3,7 @@
 import BitField.Companion.bitField
 import Direction.*
 import Items.NO_ITEM
+import OnePush.Companion.onePush
 import PushSelectors.itemOnHandScore
 import PushSelectors.itemsCountDiff
 import PushSelectors.pushOutItems
@@ -82,7 +83,7 @@ enum class RepetitionType {
     UNKNOWN
 }
 
-val drawRepetitions = Array<RepetitionType>(10) { UNKNOWN }
+val drawRepetitions = Array<RepetitionType>(11) { UNKNOWN }
 val nonDrawRepetitions = Array<RepetitionType>(20) { UNKNOWN }
 
 private fun initProbabilities() {
@@ -309,22 +310,23 @@ private fun findBestMove(
     } else {
         numberOfDraws = 0
     }
+    val prevMoves = allBoards[lastBoardAndElfs]
     if (!wasDrawAtPrevMove) {
         val enemyLastPush = tryFindEnemyPush(lastBoard, gameBoard, lastPush)
 
         if (enemyLastPush != null) {
 
-            if (wasDrawSequence) {
-                val sameMoveAsPrev = allBoards[lastBoardAndElfs]!!.last().ourPush.collision(enemyLastPush)
-                drawRepetitions[wasDrawSequenceLength + 1] = if (sameMoveAsPrev) {
-                    when (drawRepetitions[wasDrawSequenceLength + 1]) {
+            if (wasDrawSequence && prevMoves != null) {
+                val sameMoveAsPrev = prevMoves!!.last().ourPush.collision(enemyLastPush)
+                drawRepetitions[wasDrawSequenceLength] = if (sameMoveAsPrev) {
+                    when (drawRepetitions[wasDrawSequenceLength]) {
                         UNKNOWN -> SAME_MOVE
                         SAME_MOVE -> SAME_MOVE
                         NOT_PREVIOUS_MOVE -> RANDOM_MOVE
                         RANDOM_MOVE -> RANDOM_MOVE
                     }
                 } else {
-                    when (drawRepetitions[wasDrawSequenceLength + 1]) {
+                    when (drawRepetitions[wasDrawSequenceLength]) {
                         UNKNOWN -> NOT_PREVIOUS_MOVE
                         SAME_MOVE -> RANDOM_MOVE
                         NOT_PREVIOUS_MOVE -> RANDOM_MOVE
@@ -332,7 +334,7 @@ private fun findBestMove(
                     }
                 }
             } else {
-                val prevMoves = allBoards[lastBoardAndElfs]
+                val prevMoves = prevMoves
                 if (prevMoves != null) {
                     val sameMoveAsPrev = prevMoves.last().enemyPush == enemyLastPush
                     val seqLength = prevMoves.size
@@ -358,19 +360,17 @@ private fun findBestMove(
             }
         }
     } else { // was draw
-        val prevMoves = allBoards[lastBoardAndElfs]
-
-        if (wasDrawSequence) {
-            val sameMoveAsPrev = allBoards[lastBoardAndElfs]!!.last().ourPush.collision(lastPush)
-            drawRepetitions[wasDrawSequenceLength + 1] = if (sameMoveAsPrev) {
-                when (drawRepetitions[wasDrawSequenceLength + 1]) {
+        if (wasDrawSequence && prevMoves != null) {
+            val sameMoveAsPrev = prevMoves!!.last().ourPush.collision(lastPush)
+            drawRepetitions[wasDrawSequenceLength] = if (sameMoveAsPrev) {
+                when (drawRepetitions[wasDrawSequenceLength]) {
                     UNKNOWN -> SAME_MOVE
                     SAME_MOVE -> SAME_MOVE
                     NOT_PREVIOUS_MOVE -> RANDOM_MOVE
                     RANDOM_MOVE -> RANDOM_MOVE
                 }
             } else {
-                when (drawRepetitions[wasDrawSequenceLength + 1]) {
+                when (drawRepetitions[wasDrawSequenceLength]) {
                     UNKNOWN -> NOT_PREVIOUS_MOVE
                     SAME_MOVE -> RANDOM_MOVE
                     NOT_PREVIOUS_MOVE -> RANDOM_MOVE
@@ -378,7 +378,7 @@ private fun findBestMove(
                 }
             }
         } else {// first draw
-            val prevMoves = allBoards[lastBoardAndElfs]
+            val prevMoves = prevMoves
             if (prevMoves != null) {
                 val sameMoveAsPrev = prevMoves.last().enemyPush.collision(lastPush)
                 val seqLength = prevMoves.size
@@ -399,6 +399,9 @@ private fun findBestMove(
                 }
             }
         }
+
+        allBoards.computeIfAbsent(lastBoardAndElfs) { _ -> mutableListOf() }
+            .add(Pushes(lastPush, lastPush))
     }
 
     val ourPaths = gameBoard.findPaths(we, ourQuests)
@@ -539,7 +542,7 @@ fun tryFindEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: OnePush)
             if (draw) {
                 continue
             }
-            val enemyPush = OnePush(enemyDirection, enemyRowColumn)
+            val enemyPush = onePush(enemyDirection, enemyRowColumn)
             val newBoard = fromBoard.push(Pushes(ourPush, enemyPush))
             if (newBoard == toBoard) {
                 return enemyPush
@@ -632,13 +635,28 @@ data class InputConditions(
     var enemy: Player
 )
 
-data class OnePush(val direction: Direction, val rowColumn: Int) {
+data class OnePush private constructor(val direction: Direction, val rowColumn: Int) {
     val idx = direction.ordinal * 7 + rowColumn
+    lateinit var opposite: OnePush
+        private set
 
     companion object {
         val allPushes = Direction.allDirections.flatMap { dir -> (0..6).map { OnePush(dir, it) } }
 
         fun byIdx(idx: Int) = allPushes[idx]
+
+        fun onePush(direction: Direction, rowColumn: Int) = byIdx(direction.ordinal * 7 + rowColumn)
+
+        init {
+            allPushes.forEach { first ->
+                allPushes.forEach { second ->
+                    if (first!=second && first.collision(second)){
+                        first.opposite = second
+                        second.opposite = first
+                    }
+                }
+            }
+        }
     }
 
     override fun toString(): String {
@@ -658,8 +676,8 @@ data class Pushes(val ourPush: OnePush, val enemyPush: OnePush) {
                     (0..6).flatMap { enemyRowColumn ->
                         Direction.allDirections.map { enemyDirection ->
                             Pushes(
-                                OnePush(ourDirection, ourRowColumn),
-                                OnePush(enemyDirection, enemyRowColumn)
+                                onePush(ourDirection, ourRowColumn),
+                                onePush(enemyDirection, enemyRowColumn)
                             )
                         }
                     }
@@ -672,8 +690,8 @@ data class Pushes(val ourPush: OnePush, val enemyPush: OnePush) {
                     (0..0).flatMap { enemyRowColumn ->
                         Direction.allDirections.map { enemyDirection ->
                             Pushes(
-                                OnePush(ourDirection, ourRowColumn),
-                                OnePush(enemyDirection, enemyRowColumn)
+                                onePush(ourDirection, ourRowColumn),
+                                onePush(enemyDirection, enemyRowColumn)
                             )
                         }
                     }
@@ -829,14 +847,20 @@ private fun selectPivotSolver(
     prevPushesAtThisPosition: List<Pushes>?
 ): OnePush {
     log("pivotSolver: prev pushes at this position: $prevPushesAtThisPosition")
-    log("pivotSolver: enemy draw repetitions: $drawRepetitions")
-    log("pivotSolver: enemy nonDraw repetitions: $nonDrawRepetitions")
+    log("pivotSolver: enemy draw repetitions: ${drawRepetitions.contentToString()}")
+    log("pivotSolver: enemy nonDraw repetitions: ${nonDrawRepetitions.contentToString()}")
 
     var threshold = 0.0000001
     fun r(value: Double): Double =
         if (value > -threshold && value < threshold) 0.0 else value
 
-    val prevEnemyPushes = prevPushesAtThisPosition?.map { it.enemyPush }
+    val prevEnemyPushes = prevPushesAtThisPosition?.flatMap {
+        if (it.collision()) {
+            listOf(it.enemyPush, it.enemyPush.opposite)
+        } else {
+            listOf(it.enemyPush)
+        }
+    }
     val prevOurPushes = prevPushesAtThisPosition?.map { it.ourPush }
 
     val pushes = if (prevEnemyPushes == null || prevEnemyPushes.isEmpty()) {
@@ -852,8 +876,15 @@ private fun selectPivotSolver(
                 else -> pushes
             }
         } else {
-            val enemyType = drawRepetitions[numberOfDraws + 1]
-            log("enemy type $enemyType")
+            val enemyType = if (drawRepetitions[numberOfDraws] != UNKNOWN){
+                val type = drawRepetitions[numberOfDraws - 1]
+                log("I guess that enemy type is $type")
+                type
+            }else {
+                val type = drawRepetitions[numberOfDraws]
+                log("enemy type $type")
+                type
+            }
             when (enemyType) {
                 NOT_PREVIOUS_MOVE -> pushes.filterNot { it.pushes.enemyPush == prevEnemyPushes.last() }
                 SAME_MOVE -> pushes.filter { it.pushes.enemyPush == prevEnemyPushes.last() }
@@ -1203,7 +1234,7 @@ class PushResultTable(pushes: List<PushAndMove>) {
                 val header = "  ${dir.name.padStart(5)}$rc  | "
                 val columns = Direction.allDirections.flatMap { enemyDir ->
                     (0..6).map { enemyRc ->
-                        val pushResult = table[OnePush(dir, rc)]!![OnePush(enemyDir, enemyRc)]!!
+                        val pushResult = table[onePush(dir, rc)]!![onePush(enemyDir, enemyRc)]!!
                         val itemsCountDiff = pushResult.itemsCountDiff.toString().padStart(2)
                         val pushOutItems = pushResult.pushOutItems.toString().padStart(3)
                         val space = pushResult.space.toString().padStart(3)
