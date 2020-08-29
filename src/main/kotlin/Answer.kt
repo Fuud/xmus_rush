@@ -84,7 +84,7 @@ enum class RepetitionType {
 }
 
 val drawRepetitions = Array<RepetitionType>(11) { UNKNOWN }
-val nonDrawRepetitions = Array<RepetitionType>(20) { UNKNOWN }
+val nonDrawRepetitions = Array<RepetitionType>(150) { UNKNOWN }
 
 private fun initProbabilities() {
     val p00 = 0.611
@@ -884,7 +884,7 @@ private fun selectPivotSolver(
                 else -> pushes
             }
         } else {
-            val enemyType = if (drawRepetitions[numberOfDraws] != UNKNOWN) {
+            val enemyType = if (drawRepetitions[numberOfDraws] == UNKNOWN) {
                 val type = drawRepetitions[numberOfDraws - 1]
                 log("I guess that enemy type is $type")
                 type

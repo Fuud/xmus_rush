@@ -49,7 +49,7 @@ object Replay {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        val replayId = "484254152"
+        val replayId = "484262019"
 
         val replayFile = File("replays/$replayId.txt")
 
