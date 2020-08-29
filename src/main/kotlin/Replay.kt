@@ -17,6 +17,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.coroutines.runBlocking
 import java.io.File
+import java.util.*
 
 val ymlMapper = ObjectMapper(YAMLFactory().apply {
     this.enable(YAMLGenerator.Feature.LITERAL_BLOCK_STYLE)
@@ -49,7 +50,7 @@ object Replay {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        val replayId = "484262019"
+        val replayId = "484316160"
 
         val replayFile = File("replays/$replayId.txt")
 
@@ -167,13 +168,63 @@ object Transformer {
     }
 }
 
-object Test {
+object DownloadLast {
     @JvmStatic
     fun main(args: Array<String>) {
         val games = listLastBattles("295709813627112ed42900bdc3f5ff26792c2c1b")
         games.forEach {
             downloadReplay(it)
         }
+    }
+}
+
+object ComputeProbabilities {
+    @JvmStatic
+    fun main(args: Array<String>) {
+        val fingerPrints = mutableSetOf<List<Pair<Int, Int>>>()
+        val sum: Array<IntArray> = Array(4) { IntArray(4) }
+        fun printP(oe : Array<IntArray>, count:Int) {
+            for (o in (0 until 3)) {
+                for (e in (0 until 3)) {
+                    print(oe[o][e] * 1.0 / count * 100)
+                    print(" ")
+                }
+                println()
+            }
+            println("-------------------")
+        }
+        var replay =0
+        File("replays").listFiles()
+            .filter { it.extension == "txt" && !it.name.contains("raw")}
+            .filter { it.name.contains("484316160") }
+            .forEach { file ->
+                val input = Scanner(file)
+                val conditions = readInput(input)
+                val board = conditions.gameBoard
+                val fields: MutableList<BitField> = Point.points.flatten()
+                    .map { p -> board.bitBoard[p] }
+                    .toMutableList()
+                fields.add(board.bitBoard.ourField())
+                fields.add(board.bitBoard.enemyField())
+                val fingerPrint: List<Pair<Int, Int>> = fields.map {
+                    it.tile.shl(1).or(if (it.item != 0) 1 else 0) to it
+                }.groupBy { it.first }
+                    .map { it.key to it.value.size }
+                    .sortedBy { it.first }
+                if(fingerPrints.add(fingerPrint)) {
+                    replay++
+                    System.err.println(fingerPrint)
+                    val threshold = 10_000_000
+                    val p = calculateProbabilities(fields, threshold)
+                    for (o in (0 until 4)) {
+                        for (e in (0 until 4)) {
+                            sum[o][e] += p[o][e]
+                        }
+                    }
+                    printP(sum, threshold * replay)
+                }
+            }
+        System.err.println(fingerPrints.size)
     }
 }
 

@@ -87,15 +87,15 @@ val drawRepetitions = Array<RepetitionType>(11) { UNKNOWN }
 val nonDrawRepetitions = Array<RepetitionType>(150) { UNKNOWN }
 
 private fun initProbabilities() {
-    val p00 = 0.611
-    val p01 = 0.151
-    val p02 = 0.018
-    val p10 = 0.151
-    val p11 = 0.040
-    val p12 = 0.050
-    val p20 = 0.018
-    val p21 = 0.050
-    val p22 = 0.010
+    val p00 = 0.6383
+    val p01 = 0.1429
+    val p02 = 0.0163
+    val p10 = 0.1429
+    val p11 = 0.0338
+    val p12 = 0.0044
+    val p20 = 0.0163
+    val p21 = 0.0044
+    val p22 = 0.0007
     val oe = doubleArrayOf(p00, p01, p02, p10, p11, p12, p20, p21, p22)
     val duration = measureNanoTime {
         for (o in (0 until 13)) {
@@ -560,7 +560,7 @@ fun tryFindEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: OnePush)
     return null // for example if item was taken immediately after push we cannot find enemy move
 }
 
-private fun readInput(input: Scanner): InputConditions {
+fun readInput(input: Scanner): InputConditions {
     val turnType = input.nextInt() // 0 - push, 1 - move
     val board = BoardDto(input)
 
@@ -908,7 +908,7 @@ private fun selectPivotSolver(
 
     var haveAnyChances = false
     for (push in pushes) {
-        val score = (push.score)
+        val score = r(push.score)
         if (score > 0) {
             haveAnyChances = true
         }
@@ -2179,7 +2179,53 @@ class TeeInputStream(private var source: InputStream, private var copySink: Outp
     override fun skip(n: Long): Long {
         return source.skip(n)
     }
+}
 
+fun calculateProbabilities(fields: MutableList<BitField>, threshold: Int) :Array<IntArray>{
+    var count = 1
+    val oe: Array<IntArray> = Array(4) { IntArray(4) }
+    val quests = (0..11).toMutableList()
+    while (count <= threshold) {
+        fields.shuffle(rand)
+        val rows = fields.subList(0, 49)
+            .chunked(7)
+            .map { row ->
+                var result = 0L
+                for (i in (0..6)) {
+                    result = result.shl(9).or(row[i].bits)
+                }
+                result
+            }.toLongArray()
+        val hands = fields.subList(49, 51)
+            .map{it.bits}
+            .toLongArray()
+        val rboard = GameBoard(BitBoard(rows, hands))
+
+        val ourQuest = selectQuests(quests)
+        val enemyQuest= selectQuests(quests)
+        val ourD = rboard.findDomain(
+            Point.point(rand.nextInt(7), rand.nextInt(7)),
+            ourQuest,
+            enemyQuest
+        )
+        val enemyD = rboard.findDomain(
+            Point.point(rand.nextInt(7), rand.nextInt(7)),
+            ourQuest,
+            enemyQuest
+        )
+        oe[ourD.getOurQuestsCount()][enemyD.getEnemyQuestsCount()] += 1
+        count++
+    }
+    return oe
+}
+
+private fun selectQuests(quests: MutableList<Int>): Int {
+    quests.shuffle(rand)
+    var ourQuest = 0
+    quests.subList(0, 3).forEach {
+        ourQuest = ourQuest.set(it)
+    }
+    return ourQuest
 }
 
 object Warmup {
@@ -2188,51 +2234,6 @@ object Warmup {
     }
 
     fun warmupOnce() {
-//        var count =1
-//        val oe = Array(4){IntArray(4)}
-//        val fields = toPush.gameBoard.board.toMutableList()
-//        fields.add(toPush.gameBoard.ourField)
-//        fields.add(toPush.gameBoard.enemyField)
-//        val quests =
-//            fields.filter { it.item != null && it.item.itemPlayerId == 0 }.map { it.item!!.itemName }.toMutableList()
-//        val domain = Domains()
-//        while (true) {
-//            if (count % 500000 ==0 ){
-//                    for(o in (0 until 4)) {
-//                        for(e in (0 until 4)){
-//                            print(oe[o][e] *1.0/ count *100)
-//                            print(" ")
-//                        }
-//                        println()
-//                    }
-//                println("-------------------")
-//            }
-//
-//            fields.shuffle(rand)
-//            val rboard =  GameBoard(fields.subList(0,49).toTypedArray(), fields[49], fields[50])
-//            quests.shuffle(rand)
-//            val ourQuest = quests.subList(0, 3).toList()
-//            quests.shuffle(rand)
-//            val enemyQuest = quests.subList(0, 3).toList()
-//            val ourD = rboard.findDomain(
-//                Point.point(rand.nextInt(7), rand.nextInt(7)),
-//                ourQuest,
-//                enemyQuest,
-//                domain,
-//                emptyList()
-//            )
-//            val enemyD = rboard.findDomain(
-//                Point.point(rand.nextInt(7), rand.nextInt(7)),
-//                ourQuest,
-//                enemyQuest,
-//                domain,
-//                emptyList()
-//            )
-//            oe[ourD.getOurQuestsCount()][enemyD.getEnemyQuestsCount()]+=1
-//            domain.clear()
-//            count++
-//        }
-
         log("warmup once started")
         lastPush = findBestPush(
             toPush.we,
