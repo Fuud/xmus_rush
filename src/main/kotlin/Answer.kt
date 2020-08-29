@@ -177,6 +177,7 @@ var lastBoard: GameBoard? = null
 var lastBoardAndElfs: BoardAndElfs? = null
 var lastPush: OnePush? = null
 var numberOfDraws = 0
+var numberOfDrawsWithoutMoves = 0
 var pushesRemain = 74
 
 data class BoardAndElfs(val gameBoard: GameBoard, val ourElf: Point, val enemyElf: Point)
@@ -216,7 +217,7 @@ fun performGame() {
                 val duration = measureNanoTime {
                     val prevMovesAtThisPosition = allBoards[BoardAndElfs(gameBoard, we.point, enemy.point)]
 
-                    log("consecutiveDraws=$numberOfDraws duplicate=${prevMovesAtThisPosition != null}")
+                    log("consecutiveDraws=$numberOfDraws drawsWOMoves=$numberOfDrawsWithoutMoves duplicate=${prevMovesAtThisPosition != null}")
 
                     val bestMove = findBestPush(
                         we,
@@ -303,12 +304,19 @@ private fun findBestMove(
     val lastBoard = lastBoard!!
     val lastBoardAndElfs = lastBoardAndElfs!!
     val wasDrawAtPrevMove = lastBoard == gameBoard
-    val wasDrawSequence = numberOfDraws > 0
-    val wasDrawSequenceLength = numberOfDraws
+    val wasMove = we.point != lastBoardAndElfs!!.ourElf || enemy.point != lastBoardAndElfs!!.enemyElf
+    val wasDrawSequence = numberOfDrawsWithoutMoves > 0
+    val wasDrawSequenceLength = numberOfDrawsWithoutMoves
     if (wasDrawAtPrevMove) {
         numberOfDraws++
+        if (wasMove) {
+            numberOfDrawsWithoutMoves = 0
+        } else {
+            numberOfDrawsWithoutMoves++
+        }
     } else {
         numberOfDraws = 0
+        numberOfDrawsWithoutMoves = 0
     }
     val prevMoves = allBoards[lastBoardAndElfs]
     if (!wasDrawAtPrevMove) {
@@ -329,7 +337,7 @@ private fun findBestMove(
                     when (drawRepetitions[wasDrawSequenceLength]) {
                         UNKNOWN -> NOT_PREVIOUS_MOVE
                         SAME_MOVE -> RANDOM_MOVE
-                        NOT_PREVIOUS_MOVE -> RANDOM_MOVE
+                        NOT_PREVIOUS_MOVE -> NOT_PREVIOUS_MOVE
                         RANDOM_MOVE -> RANDOM_MOVE
                     }
                 }
@@ -349,7 +357,7 @@ private fun findBestMove(
                         when (nonDrawRepetitions[seqLength]) {
                             UNKNOWN -> NOT_PREVIOUS_MOVE
                             SAME_MOVE -> RANDOM_MOVE
-                            NOT_PREVIOUS_MOVE -> RANDOM_MOVE
+                            NOT_PREVIOUS_MOVE -> NOT_PREVIOUS_MOVE
                             RANDOM_MOVE -> RANDOM_MOVE
                         }
                     }
@@ -373,7 +381,7 @@ private fun findBestMove(
                 when (drawRepetitions[wasDrawSequenceLength]) {
                     UNKNOWN -> NOT_PREVIOUS_MOVE
                     SAME_MOVE -> RANDOM_MOVE
-                    NOT_PREVIOUS_MOVE -> RANDOM_MOVE
+                    NOT_PREVIOUS_MOVE -> NOT_PREVIOUS_MOVE
                     RANDOM_MOVE -> RANDOM_MOVE
                 }
             }
@@ -393,7 +401,7 @@ private fun findBestMove(
                     when (nonDrawRepetitions[seqLength]) {
                         UNKNOWN -> NOT_PREVIOUS_MOVE
                         SAME_MOVE -> RANDOM_MOVE
-                        NOT_PREVIOUS_MOVE -> RANDOM_MOVE
+                        NOT_PREVIOUS_MOVE -> NOT_PREVIOUS_MOVE
                         RANDOM_MOVE -> RANDOM_MOVE
                     }
                 }
@@ -650,7 +658,7 @@ data class OnePush private constructor(val direction: Direction, val rowColumn: 
         init {
             allPushes.forEach { first ->
                 allPushes.forEach { second ->
-                    if (first!=second && first.collision(second)){
+                    if (first != second && first.collision(second)) {
                         first.opposite = second
                         second.opposite = first
                     }
@@ -876,18 +884,18 @@ private fun selectPivotSolver(
                 else -> pushes
             }
         } else {
-            val enemyType = if (drawRepetitions[numberOfDraws] != UNKNOWN){
+            val enemyType = if (drawRepetitions[numberOfDraws] != UNKNOWN) {
                 val type = drawRepetitions[numberOfDraws - 1]
                 log("I guess that enemy type is $type")
                 type
-            }else {
+            } else {
                 val type = drawRepetitions[numberOfDraws]
                 log("enemy type $type")
                 type
             }
             when (enemyType) {
-                NOT_PREVIOUS_MOVE -> pushes.filterNot { it.pushes.enemyPush == prevEnemyPushes.last() }
-                SAME_MOVE -> pushes.filter { it.pushes.enemyPush == prevEnemyPushes.last() }
+                NOT_PREVIOUS_MOVE -> pushes.filterNot { it.pushes.enemyPush == prevEnemyPushes.last() || it.pushes.enemyPush == prevEnemyPushes.last().opposite }
+                SAME_MOVE -> pushes.filter { it.pushes.enemyPush == prevEnemyPushes.last() || it.pushes.enemyPush == prevEnemyPushes.last().opposite}
                 else -> pushes
             }
         }
