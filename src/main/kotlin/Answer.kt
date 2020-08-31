@@ -1546,6 +1546,7 @@ class Domains {
                 this.set(newDomainInfo, lowBit % 7, lowBit / 7)
                 visitedPoints = visitedPoints.xor(1L.shl(lowBit))
             }
+            return newDomainInfo
         }
         return null
     }
