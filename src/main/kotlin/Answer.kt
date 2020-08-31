@@ -13,7 +13,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.StringReader
-import java.lang.Long.numberOfTrailingZeros
 import java.lang.management.GarbageCollectorMXBean
 import java.lang.management.ManagementFactory
 import java.text.DecimalFormat
@@ -40,6 +39,8 @@ var super_cached = 0
 var cached = 0
 var non_cached = 0
 var quests_not_match = 0
+
+var maxDomains = 0
 
 val setupMonitoring = run {
     log("java started as: ${ManagementFactory.getRuntimeMXBean().inputArguments}")
@@ -519,6 +520,8 @@ private fun findBestMove(
             moveScores[point] = moveScores[point]!! + score
             movePushScores[point.idx][pushes.ourPush.idx] += score
         }
+
+        maxDomains = max(maxDomains, pushAndMove.board.domains.count())
     }
     val maxScoreByPoint = movePushScores.map { it.max() }
 
@@ -1512,18 +1515,15 @@ data class PathElem(
 )
 
 class Domains {
-    private val domains = Array<Array<DomainInfo?>?>(10) { null }
+    private val domains = ArrayList<DomainInfo>(10)
 
     fun get(point: Point, ourQuestsSet: Int, enemyQuestsSet: Int): DomainInfo? {
+
         var otherDI: DomainInfo? = null
-        for (i in 0 until 10) {
-            val arrayOfDomainInfos = domains[i]
-            if (arrayOfDomainInfos == null) {
-                return null
-            }
-            val info = arrayOfDomainInfos[point.idx]
-            if (info == null) {
-                return null
+        for (i in 0 until domains.size) {
+            val info = domains[i]
+            if (!info.domainBits[point.idx]) {
+                continue
             }
             if (info.inputOurQuests == ourQuestsSet && info.inputEnemyQuests == enemyQuestsSet) {
                 return info
@@ -1540,27 +1540,19 @@ class Domains {
                 enemyQuestBits = enemyQuestsSet and otherDI.enemyItemsBits
             )
 
-            var visitedPoints = newDomainInfo.domainBits
-            while (visitedPoints != 0L) {
-                val lowBit = numberOfTrailingZeros(visitedPoints)
-                this.set(newDomainInfo, lowBit % 7, lowBit / 7)
-                visitedPoints = visitedPoints.xor(1L.shl(lowBit))
-            }
+            domains.add(newDomainInfo)
+
             return newDomainInfo
         }
         return null
     }
 
-    fun set(domain: DomainInfo, x: Int, y: Int) {
-        for (i in 0 until 10) {
-            if (domains[i] == null) {
-                domains[i] = Array(49) { null }
-            }
-            val arrayOfDomainInfos = domains[i]!!
-            if (arrayOfDomainInfos[y * 7 + x] == null) {
-                arrayOfDomainInfos[y * 7 + x] = domain
-            }
-        }
+    fun set(domain: DomainInfo) {
+        domains.add(domain)
+    }
+
+    fun count(): Int{
+        return domains.size
     }
 
 }
@@ -1687,7 +1679,7 @@ data class BitBoard(val rows: LongArray, val hands: LongArray) {
 
 data class GameBoard(val bitBoard: BitBoard) {
     private val cachedPaths = arrayOfNulls<MutableList<PathElem>>(2)
-    private val domains = Domains()
+    val domains = Domains()
     private var parent: GameBoard? = null
     private var pushFromParent: Pushes? = null
 
@@ -1806,11 +1798,7 @@ data class GameBoard(val bitBoard: BitBoard) {
             minX = minX,
             minY = minY
         )
-        while (visitedPoints != 0L) {
-            val lowBit = numberOfTrailingZeros(visitedPoints)
-            domains.set(domain, lowBit % 7, lowBit / 7)
-            visitedPoints = visitedPoints.xor(1L.shl(lowBit))
-        }
+        domains.set(domain)
 
         return domain
     }
