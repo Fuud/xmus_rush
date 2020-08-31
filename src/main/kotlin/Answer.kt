@@ -13,6 +13,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.StringReader
+import java.lang.Long.numberOfTrailingZeros
 import java.lang.management.GarbageCollectorMXBean
 import java.lang.management.ManagementFactory
 import java.text.DecimalFormat
@@ -24,6 +25,7 @@ import kotlin.collections.component1
 import kotlin.math.abs
 import kotlin.math.absoluteValue
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.system.measureNanoTime
 
 /**
@@ -34,6 +36,10 @@ fun log(s: Any?) {
     System.err.println("\n#[${System.currentTimeMillis() - startTime}] $s\n")
 }
 
+var super_cached = 0
+var cached = 0
+var non_cached = 0
+var quests_not_match = 0
 
 val setupMonitoring = run {
     log("java started as: ${ManagementFactory.getRuntimeMXBean().inputArguments}")
@@ -480,7 +486,7 @@ private fun findBestMove(
     }
     val nextEnemy = enemy.copy(numPlayerCards = enemyNextNumCards)
     for (pushes in Pushes.allPushes) {
-        if (System.nanoTime() - startTime > timeLimit && count > 0) {
+        if (System.nanoTime() - startTime > timeLimit*2 && count > 0) {
             log("stop computePushes, computed $count pushes")
             break
         }
@@ -895,7 +901,7 @@ private fun selectPivotSolver(
             }
             when (enemyType) {
                 NOT_PREVIOUS_MOVE -> pushes.filterNot { it.pushes.enemyPush == prevEnemyPushes.last() || it.pushes.enemyPush == prevEnemyPushes.last().opposite }
-                SAME_MOVE -> pushes.filter { it.pushes.enemyPush == prevEnemyPushes.last() || it.pushes.enemyPush == prevEnemyPushes.last().opposite}
+                SAME_MOVE -> pushes.filter { it.pushes.enemyPush == prevEnemyPushes.last() || it.pushes.enemyPush == prevEnemyPushes.last().opposite }
                 else -> pushes
             }
         }
@@ -1056,10 +1062,20 @@ private fun selectPivotSolver(
 
     val selection = rand.nextDouble()
 
-    log("OurStrategy: ${ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
-        .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
-    log("EnemyStrategy: ${enemyStrategy.mapIndexed { idx, score -> enemyPushes[idx] to score }
-        .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
+    log(
+        "OurStrategy: ${
+            ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
+                .sortedByDescending { it.second }
+                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+        }"
+    )
+    log(
+        "EnemyStrategy: ${
+            enemyStrategy.mapIndexed { idx, score -> enemyPushes[idx] to score }
+                .sortedByDescending { it.second }
+                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+        }"
+    )
 
     log("selection=$selection ourSum=${ourStrategy.sum()} enemySum=${enemyStrategy.sum()}")
 
@@ -1230,12 +1246,14 @@ class PushResultTable(pushes: List<PushAndMove>) {
     override fun toString(): String {
         val header =
             "our\\enemy |  " + Direction.allDirections.flatMap { dir ->
-                    (0..6).map { rc ->
-                        "${dir.name.padStart(
+                (0..6).map { rc ->
+                    "${
+                        dir.name.padStart(
                             5
-                        )}$rc"
-                    }
+                        )
+                    }$rc"
                 }
+            }
                 .joinToString(separator = "    | ")
         val rows = Direction.allDirections.flatMap { dir ->
             (0..6).map { rc ->
@@ -1442,7 +1460,11 @@ data class DomainInfo(
     val enemyQuestBits: Int,
     val ourItemsBits: Int,
     val enemyItemsBits: Int,
-    val domainBits: Long
+    val domainBits: Long,
+    val maxX: Int,
+    val minX: Int,
+    val maxY: Int,
+    val minY: Int
 ) {
 
     val size: Int = java.lang.Long.bitCount(domainBits)
@@ -1482,6 +1504,7 @@ class Domains {
     private val domains = Array<Array<DomainInfo?>?>(10) { null }
 
     fun get(point: Point, ourQuestsSet: Int, enemyQuestsSet: Int): DomainInfo? {
+        var otherDI: DomainInfo? = null
         for (i in 0 until 10) {
             val arrayOfDomainInfos = domains[i]
             if (arrayOfDomainInfos == null) {
@@ -1493,6 +1516,24 @@ class Domains {
             }
             if (info.inputOurQuests == ourQuestsSet && info.inputEnemyQuests == enemyQuestsSet) {
                 return info
+            } else {
+                otherDI = info
+                quests_not_match++
+            }
+        }
+        if (otherDI != null) {
+            val newDomainInfo = otherDI.copy(
+                inputOurQuests = ourQuestsSet,
+                inputEnemyQuests = enemyQuestsSet,
+                ourQuestBits = ourQuestsSet and otherDI.ourItemsBits,
+                enemyQuestBits = enemyQuestsSet and otherDI.enemyItemsBits
+            )
+
+            var visitedPoints = newDomainInfo.domainBits
+            while (visitedPoints != 0L) {
+                val lowBit = numberOfTrailingZeros(visitedPoints)
+                this.set(newDomainInfo, lowBit % 7, lowBit / 7)
+                visitedPoints = visitedPoints.xor(1L.shl(lowBit))
             }
         }
         return null
@@ -1635,11 +1676,12 @@ data class BitBoard(val rows: LongArray, val hands: LongArray) {
 data class GameBoard(val bitBoard: BitBoard) {
     private val cachedPaths = arrayOfNulls<MutableList<PathElem>>(2)
     private val domains = Domains()
+    private var parent: GameBoard? = null
+    private var pushFromParent: Pushes? = null
 
     companion object {
         val pooledList1 = arrayListOf<PathElem>()
         val pooledList2 = arrayListOf<PathElem>()
-        var visitedPoints = 0L
         val pooledFront: Array<Point?> = Array(50) { null }
         var pooledFrontReadPos = 0
         var pooledFrontWritePos = 0
@@ -1672,9 +1714,30 @@ data class GameBoard(val bitBoard: BitBoard) {
     ): DomainInfo {
         val cachedValue = domains.get(point, ourQuestsSet, enemyQuestsSet)
         if (cachedValue != null) {
+            super_cached++
             return cachedValue
         }
-        visitedPoints = 0L
+
+        if (parent != null) {
+            val cachedValue = parent!!.domains.get(point, ourQuestsSet, enemyQuestsSet)
+            if (cachedValue != null) {
+                val pushes = pushFromParent!!
+                val affectOurX =
+                    pushes.ourPush.direction.isVertical && cachedValue.maxX + 1 >= pushes.ourPush.rowColumn && cachedValue.minX - 1 <= pushes.ourPush.rowColumn
+                val affectOurY =
+                    !pushes.ourPush.direction.isVertical && cachedValue.maxY + 1 >= pushes.ourPush.rowColumn && cachedValue.minY - 1 <= pushes.ourPush.rowColumn
+                val affectEnemyX =
+                    pushes.enemyPush.direction.isVertical && cachedValue.maxX + 1 >= pushes.enemyPush.rowColumn && cachedValue.minX - 1 <= pushes.enemyPush.rowColumn
+                val affectEnemyY =
+                    !pushes.enemyPush.direction.isVertical && cachedValue.maxY + 1 >= pushes.enemyPush.rowColumn && cachedValue.minY - 1 <= pushes.enemyPush.rowColumn
+                if (!(affectEnemyX || affectEnemyY || affectOurX || affectOurY)) {
+                    cached++
+                    return cachedValue
+                }
+            }
+        }
+        non_cached++
+        var visitedPoints = 0L
 
         var ourQuestsBits = 0
         var enemyQuestsBits = 0
@@ -1684,12 +1747,18 @@ data class GameBoard(val bitBoard: BitBoard) {
         visitedPoints = visitedPoints.set(point.idx)
         cleanFront()
         writeNextFront(point)
+        var maxX = 0
+        var maxY = 0
+        var minX = 7
+        var minY = 7
         while (true) {
-            val nextPoint = readNextFront()
-            if (nextPoint == null) {
-                break
-            }
-            val item = bitBoard[nextPoint].item
+            val nextPoint = readNextFront() ?: break
+            maxX = max(maxX, nextPoint.x)
+            minX = min(minX, nextPoint.x)
+            maxY = max(maxY, nextPoint.y)
+            minY = min(minY, nextPoint.y)
+            val bitField = bitBoard[nextPoint]
+            val item = bitField.item
             if (item > 0) {
                 if (ourQuestsSet[item]) {
                     ourQuestsBits = ourQuestsBits.set(item)
@@ -1702,8 +1771,7 @@ data class GameBoard(val bitBoard: BitBoard) {
                 }
                 enemyItems = enemyItems.set(-item)
             }
-            for (i in (0..3)) {
-                val direction = Direction.allDirections[i]
+            for (direction in Tile.tiles[bitField.tile].directions) {
                 if (nextPoint.can(direction)) {
                     val newPoint = nextPoint.move(direction)
                     if (!visitedPoints[newPoint.idx]) {
@@ -1720,10 +1788,14 @@ data class GameBoard(val bitBoard: BitBoard) {
             enemyQuestBits = enemyQuestsBits,
             ourItemsBits = ourItems,
             enemyItemsBits = enemyItems,
-            domainBits = visitedPoints
+            domainBits = visitedPoints,
+            maxX = maxX,
+            maxY = maxY,
+            minX = minX,
+            minY = minY
         )
         while (visitedPoints != 0L) {
-            val lowBit = java.lang.Long.numberOfTrailingZeros(visitedPoints)
+            val lowBit = numberOfTrailingZeros(visitedPoints)
             domains.set(domain, lowBit % 7, lowBit / 7)
             visitedPoints = visitedPoints.xor(1L.shl(lowBit))
         }
@@ -1879,7 +1951,10 @@ data class GameBoard(val bitBoard: BitBoard) {
             }
         }
 
-        return GameBoard(BitBoard(rows, hands))
+        return GameBoard(BitBoard(rows, hands)).apply {
+            parent = this@GameBoard
+            pushFromParent = pushes
+        }
     }
 
     private fun Point.can(direction: Direction) = when (direction) {
@@ -1989,6 +2064,8 @@ data class Point private constructor(val x: Int, val y: Int) {
 
 @Suppress("unused")
 enum class Tile(val mask: Long, val roads: Int) {
+    T0000(0b0000, 0),
+
     T0011(0b0011, 2),
     T0101(0b0101, 2),
     T0110(0b0110, 2),
@@ -2001,11 +2078,15 @@ enum class Tile(val mask: Long, val roads: Int) {
     T1110(0b1110, 3),
     T1111(0b1111, 4);
 
+    val directions = Direction.allDirections.filter { it.mask and mask != 0L }.toTypedArray()
+
     companion object {
         fun read(input: Scanner): Tile {
             val mask = java.lang.Long.parseLong(input.next(), 2)
             return values().find { it.mask == mask }!!
         }
+
+        val tiles = Array<Tile>(16) { idx -> values().find { it.mask == idx.toLong() } ?: T0000 }
     }
 
     fun connect(tile: Tile, direction: Direction): Boolean {
@@ -2181,7 +2262,7 @@ class TeeInputStream(private var source: InputStream, private var copySink: Outp
     }
 }
 
-fun calculateProbabilities(fields: MutableList<BitField>, threshold: Int) :Array<IntArray>{
+fun calculateProbabilities(fields: MutableList<BitField>, threshold: Int): Array<IntArray> {
     var count = 1
     val oe: Array<IntArray> = Array(4) { IntArray(4) }
     val quests = (0..11).toMutableList()
@@ -2197,12 +2278,12 @@ fun calculateProbabilities(fields: MutableList<BitField>, threshold: Int) :Array
                 result
             }.toLongArray()
         val hands = fields.subList(49, 51)
-            .map{it.bits}
+            .map { it.bits }
             .toLongArray()
         val rboard = GameBoard(BitBoard(rows, hands))
 
         val ourQuest = selectQuests(quests)
-        val enemyQuest= selectQuests(quests)
+        val enemyQuest = selectQuests(quests)
         val ourD = rboard.findDomain(
             Point.point(rand.nextInt(7), rand.nextInt(7)),
             ourQuest,
