@@ -86,6 +86,16 @@ enum class RepetitionType {
 val drawRepetitions = Array<RepetitionType>(11) { UNKNOWN }
 val nonDrawRepetitions = Array<RepetitionType>(150) { UNKNOWN }
 
+val drawRepetitionsStr: String
+    get() {
+        return drawRepetitions.toList().subList(1, max(2, drawRepetitions.indexOfLast { it != UNKNOWN } + 1)).joinToString()
+    }
+val nonDrawRepetitionsStr: String
+    get() {
+        return nonDrawRepetitions.toList().subList(1, max(2, nonDrawRepetitions.indexOfLast { it != UNKNOWN } + 1))
+            .joinToString()
+    }
+
 private fun initProbabilities() {
     val p00 = 0.6383
     val p01 = 0.1429
@@ -856,8 +866,8 @@ private fun selectPivotSolver(
     prevPushesAtThisPosition: List<Pushes>?
 ): OnePush {
     log("pivotSolver: prev pushes at this position: $prevPushesAtThisPosition")
-    log("pivotSolver: enemy draw repetitions: ${drawRepetitions.contentToString()}")
-    log("pivotSolver: enemy nonDraw repetitions: ${nonDrawRepetitions.contentToString()}")
+    log("pivotSolver: enemy draw repetitions: $drawRepetitionsStr")
+    log("pivotSolver: enemy nonDraw repetitions: $nonDrawRepetitionsStr")
 
     var threshold = 0.0000001
     fun r(value: Double): Double =
@@ -896,7 +906,7 @@ private fun selectPivotSolver(
             }
             when (enemyType) {
                 NOT_PREVIOUS_MOVE -> pushes.filterNot { it.pushes.enemyPush == prevEnemyPushes.last() || it.pushes.enemyPush == prevEnemyPushes.last().opposite }
-                SAME_MOVE -> pushes.filter { it.pushes.enemyPush == prevEnemyPushes.last() || it.pushes.enemyPush == prevEnemyPushes.last().opposite}
+                SAME_MOVE -> pushes.filter { it.pushes.enemyPush == prevEnemyPushes.last() || it.pushes.enemyPush == prevEnemyPushes.last().opposite }
                 else -> pushes
             }
         }
@@ -1057,10 +1067,20 @@ private fun selectPivotSolver(
 
     val selection = rand.nextDouble()
 
-    log("OurStrategy: ${ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
-        .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
-    log("EnemyStrategy: ${enemyStrategy.mapIndexed { idx, score -> enemyPushes[idx] to score }
-        .sortedByDescending { it.second }.joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }}")
+    log(
+        "OurStrategy: ${
+            ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
+                .sortedByDescending { it.second }
+                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+        }"
+    )
+    log(
+        "EnemyStrategy: ${
+            enemyStrategy.mapIndexed { idx, score -> enemyPushes[idx] to score }
+                .sortedByDescending { it.second }
+                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+        }"
+    )
 
     log("selection=$selection ourSum=${ourStrategy.sum()} enemySum=${enemyStrategy.sum()}")
 
@@ -1231,12 +1251,14 @@ class PushResultTable(pushes: List<PushAndMove>) {
     override fun toString(): String {
         val header =
             "our\\enemy |  " + Direction.allDirections.flatMap { dir ->
-                    (0..6).map { rc ->
-                        "${dir.name.padStart(
+                (0..6).map { rc ->
+                    "${
+                        dir.name.padStart(
                             5
-                        )}$rc"
-                    }
+                        )
+                    }$rc"
                 }
+            }
                 .joinToString(separator = "    | ")
         val rows = Direction.allDirections.flatMap { dir ->
             (0..6).map { rc ->
@@ -2182,7 +2204,7 @@ class TeeInputStream(private var source: InputStream, private var copySink: Outp
     }
 }
 
-fun calculateProbabilities(fields: MutableList<BitField>, threshold: Int) :Array<IntArray>{
+fun calculateProbabilities(fields: MutableList<BitField>, threshold: Int): Array<IntArray> {
     var count = 1
     val oe: Array<IntArray> = Array(4) { IntArray(4) }
     val quests = (0..11).toMutableList()
@@ -2198,12 +2220,12 @@ fun calculateProbabilities(fields: MutableList<BitField>, threshold: Int) :Array
                 result
             }.toLongArray()
         val hands = fields.subList(49, 51)
-            .map{it.bits}
+            .map { it.bits }
             .toLongArray()
         val rboard = GameBoard(BitBoard(rows, hands))
 
         val ourQuest = selectQuests(quests)
-        val enemyQuest= selectQuests(quests)
+        val enemyQuest = selectQuests(quests)
         val ourD = rboard.findDomain(
             Point.point(rand.nextInt(7), rand.nextInt(7)),
             ourQuest,
