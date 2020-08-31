@@ -603,9 +603,10 @@ fun readInput(input: Scanner): InputConditions {
         }
 
         if (globalQuestsInGameOrder.size == 11) {
-            for (item in Items.items.indices) {
-                if (!globalQuestsInGameOrder.contains(item)) {
-                    globalQuestsInGameOrder.add(item)
+            for (item in Items.items) {
+                val idx = Items.index(item)
+                if (!globalQuestsInGameOrder.contains(idx)) {
+                    globalQuestsInGameOrder.add(idx)
                 }
             }
         }
