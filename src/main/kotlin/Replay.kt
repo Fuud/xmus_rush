@@ -196,7 +196,7 @@ object ComputeProbabilities {
         var replay =0
         File("replays").listFiles()
             .filter { it.extension == "txt" && !it.name.contains("raw")}
-            .filter { it.name.contains("484315152") }
+            .filter { it.name.contains("484316160") }
             .forEach { file ->
                 val input = Scanner(file)
                 val conditions = readInput(input)
@@ -234,7 +234,7 @@ object CountStop {
         File("replays").listFiles()
             .filter { it.extension == "yml" }
             .flatMap { file ->
-                val firstLine = file.readLines().indexOfFirst { it.contains("step 10") }
+                val firstLine = file.readLines().indexOfFirst { it.contains("step 1") }
                 if (firstLine < 0) {
                     emptyList<Pair<String, String>>()
                 } else {

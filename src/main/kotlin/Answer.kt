@@ -92,6 +92,16 @@ enum class RepetitionType {
 val drawRepetitions = Array<RepetitionType>(11) { UNKNOWN }
 val nonDrawRepetitions = Array<RepetitionType>(150) { UNKNOWN }
 
+val drawRepetitionsStr: String
+    get() {
+        return drawRepetitions.toList().subList(1, max(2, drawRepetitions.indexOfLast { it != UNKNOWN } + 1)).joinToString()
+    }
+val nonDrawRepetitionsStr: String
+    get() {
+        return nonDrawRepetitions.toList().subList(1, max(2, nonDrawRepetitions.indexOfLast { it != UNKNOWN } + 1))
+            .joinToString()
+    }
+
 private fun initProbabilities() {
     val p00 = 0.6383
     val p01 = 0.1429
@@ -862,8 +872,8 @@ private fun selectPivotSolver(
     prevPushesAtThisPosition: List<Pushes>?
 ): OnePush {
     log("pivotSolver: prev pushes at this position: $prevPushesAtThisPosition")
-    log("pivotSolver: enemy draw repetitions: ${drawRepetitions.contentToString()}")
-    log("pivotSolver: enemy nonDraw repetitions: ${nonDrawRepetitions.contentToString()}")
+    log("pivotSolver: enemy draw repetitions: $drawRepetitionsStr")
+    log("pivotSolver: enemy nonDraw repetitions: $nonDrawRepetitionsStr")
 
     var threshold = 0.0000001
     fun r(value: Double): Double =
