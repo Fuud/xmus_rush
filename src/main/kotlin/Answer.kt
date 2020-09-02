@@ -811,7 +811,7 @@ data class PushAndMove(
 //        val secondaryScore = (pushOutItems(push) * 100 + space(push)).toDouble() / (34 * 100 + 48)
         val secondaryScore = (space(push).toDouble() + itemOnHandScore(push) * 25) / (50 + 25)
         val gameEstimate = if (push.pushes.collision()) {
-            if (numberOfDraws == 0) {
+            if (numberOfDraws != 9) {
                 computeEstimate(ourItemRemain, enemyItemRemain, Math.max(pushesRemain - 1, 0), secondaryScore)
             } else {
                 computeEstimate(ourItemRemain, enemyItemRemain, 9 - numberOfDraws, secondaryScore)
@@ -850,9 +850,82 @@ private fun findBestPush(
     probablyLogCompilation()
 
 //    val result = if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(10)) {
-//        selectBestPushByTwoComparators(pushes)
+//    val result =     selectBestPushByTwoComparators(pushes)
 //    } else {
-    val result = selectPivotSolver(pushes, numberOfDraws, prevPushesAtThisPosition)
+    val result = if (prevPushesAtThisPosition != null) {
+
+        val ourBestPush = selectPivotSolver(pushes, numberOfDraws, prevPushesAtThisPosition)
+
+        val enemyBestResponse = pushes.minBy {
+            if (it.pushes.ourPush != ourBestPush) {
+                2.0 // bigger than any valid score
+            } else {
+                it.score
+            }
+        }!!
+
+        val ourBestResponseOnEnemyResponse = pushes.maxBy {
+            if (it.pushes.enemyPush != enemyBestResponse.pushes.enemyPush) {
+                -2.0 // bigger than any valid score
+            } else {
+                it.score
+            }
+        }!!
+
+        log(
+            "we think that the best move is $ourBestPush, but enemy can respond with ${enemyBestResponse.pushes.enemyPush} with score=${enemyBestResponse.score}, " +
+                    "collision=${enemyBestResponse.pushes.collision()}"
+        )
+
+        if (enemyBestResponse.pushes.collision()) {
+            log("as collision is the best enemy response, lets proceed")
+            ourBestPush
+        } else {
+            log("our best respond on enemy respond is ${ourBestResponseOnEnemyResponse.pushes.ourPush} with score=${ourBestResponseOnEnemyResponse.score};")
+
+            val ourMoves = arrayOf(ourBestPush, ourBestResponseOnEnemyResponse.pushes.ourPush)
+            val enemyMoves = arrayOf(enemyBestResponse.pushes.enemyPush, ourBestPush, ourBestPush.opposite)
+
+            for ((ourIdx, ourMove) in ourMoves.withIndex()) {
+                for ((enemyIdx, enemyMove) in enemyMoves.withIndex()) {
+                    a[enemyIdx][ourIdx] =
+                        pushes.single { it.pushes.ourPush == ourMove && it.pushes.enemyPush == enemyMove }.score
+                }
+            }
+
+            val solution = solvePivot(a, enemyMoves.size, ourMoves.size)
+
+            log(
+                "our reduced strategy: ${
+                    solution.ourStrategy.zip(ourMoves).sortedByDescending { it.first }
+                        .map { "${it.second}=${twoDigitsAfterDotFormat.format(it.first)}" }
+                }"
+            )
+            log(
+                "enemy reduced strategy: ${
+                    solution.enemyStrategy.zip(enemyMoves).sortedByDescending { it.first }
+                        .map { "${it.second}=${twoDigitsAfterDotFormat.format(it.first)}" }
+                }"
+            )
+
+            val (firstStrat, secondStrat) = solution.ourStrategy.zip(ourMoves).sortedByDescending { it.first }
+
+            if (secondStrat.first > firstStrat.first * 0.8) {
+                val selection = rand.nextDouble()
+
+                if (selection < firstStrat.first) {
+                    firstStrat.second
+                } else {
+                    secondStrat.second
+                }
+            } else {
+                firstStrat.second
+            }
+        }
+    } else {
+
+        selectPivotSolver(pushes, numberOfDraws, prevPushesAtThisPosition)
+    }
 //    }
     probablyLogCompilation()
     return result
@@ -891,6 +964,7 @@ fun computeEstimate(
 }
 
 val a = Array(28) { DoubleArray(28) { 0.0 } } // interior[column][row]
+
 //val movesAndA = Array(50 * 50) { Array(28) { DoubleArray(28) { 0.0 } } }
 val stringBuilder = StringBuilder(10_000)
 
@@ -903,45 +977,6 @@ private fun selectPivotSolver(
     log("pivotSolver: prev pushes at this position: $prevPushesAtThisPosition")
     log("pivotSolver: enemy draw repetitions: $drawRepetitionsStr")
     log("pivotSolver: enemy nonDraw repetitions: $nonDrawRepetitionsStr")
-
-    val prevEnemyPushes = prevPushesAtThisPosition?.flatMap {
-        if (it.collision()) {
-            listOf(it.enemyPush, it.enemyPush.opposite)
-        } else {
-            listOf(it.enemyPush)
-        }
-    }
-    val prevOurPushes = prevPushesAtThisPosition?.map { it.ourPush }
-
-    val pushes = if (prevEnemyPushes == null || prevEnemyPushes.isEmpty()) {
-        pushes
-    } else {
-        prevOurPushes!!
-        if (numberOfDraws == 0) {
-            val enemyType = nonDrawRepetitions[prevEnemyPushes.size]
-            log("enemy type $enemyType")
-            when (enemyType) {
-                NOT_PREVIOUS_MOVE -> pushes.filterNot { it.pushes.enemyPush == prevEnemyPushes.last() }
-                SAME_MOVE -> pushes.filter { it.pushes.enemyPush == prevEnemyPushes.last() }
-                else -> pushes
-            }
-        } else {
-            val enemyType = if (drawRepetitions[numberOfDraws] == UNKNOWN) {
-                val type = drawRepetitions[numberOfDraws - 1]
-                log("I guess that enemy type is $type")
-                type
-            } else {
-                val type = drawRepetitions[numberOfDraws]
-                log("enemy type $type")
-                type
-            }
-            when (enemyType) {
-                NOT_PREVIOUS_MOVE -> pushes.filterNot { it.pushes.enemyPush == prevEnemyPushes.last() || it.pushes.enemyPush == prevEnemyPushes.last().opposite }
-                SAME_MOVE -> pushes.filter { it.pushes.enemyPush == prevEnemyPushes.last() || it.pushes.enemyPush == prevEnemyPushes.last().opposite }
-                else -> pushes
-            }
-        }
-    }
 
     val ourPushes = pushes.groupBy { it.pushes.ourPush }.keys.toList()
     val OUR_SIZE = ourPushes.size
@@ -1008,10 +1043,16 @@ private fun selectPivotSolver(
     log("selection=$selection ourSum=${ourStrategy.sum()} enemySum=${enemyStrategy.sum()}")
 
     run {
+        val theBest = ourStrategy
+            .mapIndexed { idx, score -> ourPushes[idx] to score }
+            .sortedByDescending { it.second }
+            .first()
+
         val best = ourStrategy
             .mapIndexed { idx, score -> ourPushes[idx] to score }
             .sortedByDescending { it.second }
-            .take(1)
+            .filter { it.second > theBest.second * 0.8 }
+
         val norm = best.sumByDouble { it.second }
         var currentSum = 0.0
         for (idx in best.indices) {
@@ -2152,6 +2193,9 @@ data class Player(
     val point: Point = Point.point(playerX, playerY)
 
     fun push(pushes: Pushes): Player {
+        if (pushes.collision()) {
+            return this
+        }
         var x = playerX
         var y = playerY
         val firstPush = if (pushes.ourPush.direction.isVertical) {
