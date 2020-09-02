@@ -1934,6 +1934,9 @@ data class Player(
     val point: Point = Point.point(playerX, playerY)
 
     fun push(pushes: Pushes): Player {
+        if (pushes.collision()){
+            return this
+        }
         var x = playerX
         var y = playerY
         val firstPush = if (pushes.ourPush.direction.isVertical) {
