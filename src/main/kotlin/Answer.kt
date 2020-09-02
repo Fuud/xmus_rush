@@ -5,8 +5,6 @@ import Direction.*
 import Items.NO_ITEM
 import OnePush.Companion.onePush
 import PushSelectors.itemOnHandScore
-import PushSelectors.itemsCountDiff
-import PushSelectors.pushOutItems
 import PushSelectors.space
 import RepetitionType.*
 import java.io.IOException
@@ -20,7 +18,6 @@ import java.util.*
 import java.util.concurrent.TimeUnit
 import javax.management.NotificationEmitter
 import javax.management.NotificationListener
-import kotlin.collections.component1
 import kotlin.math.abs
 import kotlin.math.absoluteValue
 import kotlin.math.max
@@ -103,19 +100,28 @@ val nonDrawRepetitionsStr: String
             .joinToString()
     }
 
-private fun initProbabilities() {
-    val p00 = 0.6383
-    val p01 = 0.1429
-    val p02 = 0.0163
-    val p10 = 0.1429
-    val p11 = 0.0338
-    val p12 = 0.0044
-    val p20 = 0.0163
-    val p21 = 0.0044
-    val p22 = 0.0007
+private fun initProbabilities(p: DoubleArray) {
+    var p00 = p[0]
+    var p01 = p[1]
+    var p02 = p[2]
+    var p10 = p01
+    var p11 = p[3]
+    var p12 = p[4]
+    var p20 = p02
+    var p21 = p12
+    var p22 = p[5]
+    val sum = p00 + p01 + p02 + p10 + p11 + p12 + p20 + p21 + p22
+    p00 /= sum
+    p01 /= sum
+    p02 /= sum
+    p10 /= sum
+    p11 /= sum
+    p12 /= sum
+    p20 /= sum
+    p21 /= sum
+    p22 /= sum
     val oe = doubleArrayOf(p00, p01, p02, p10, p11, p12, p20, p21, p22)
-    val duration = measureNanoTime {
-        for (o in (0 until 13)) {
+    for (o in (0 until 13)) {
             for (e in (0 until 13)) {
                 if (o == e) {
                     drawP[0][o][e] = 1.0
@@ -143,7 +149,6 @@ private fun initProbabilities() {
         for (turn in (1 until 75)) {
             for (o in (1 until 13)) {
                 for (e in (1 until 13)) {
-
                     for (oi in (0 until 3)) {
                         for (ei in (0 until 3)) {
                             val op = Math.max(o - oi, 0)
@@ -161,7 +166,6 @@ private fun initProbabilities() {
                 }
             }
         }
-    }
 }
 
 val twoDigitsAfterDotFormat = DecimalFormat().apply {
@@ -191,16 +195,19 @@ val movePushScores = Array(49) { DoubleArray(28) }
 
 
 var lastBoard: GameBoard? = null
-var lastBoardAndElfs: BoardAndElfs? = null
+var lastBoardAndElves: BoardAndElves? = null
 var lastPush: OnePush? = null
 var numberOfDraws = 0
 var numberOfDrawsWithoutMoves = 0
 var pushesRemain = 74
 
-data class BoardAndElfs(val gameBoard: GameBoard, val ourElf: Point, val enemyElf: Point)
+data class BoardAndElves(val gameBoard: GameBoard, val ourElf: Point, val enemyElf: Point)
+
+data class Fingerprint(val vq: Byte, val hq: Byte, val v: Byte, val h: Byte)
+
+private val defaultP = doubleArrayOf(0.6383, 0.1429, 0.0163, 0.1429, 0.0338, 0.0044, 0.0163, 0.0044, 0.0007)
 
 fun performGame() {
-    initProbabilities()
     Warmup.warmupOnce()
     Pushes.installRealPushes()
 
@@ -218,7 +225,7 @@ fun performGame() {
 
         // game loop
 
-        val allBoards = mutableMapOf<BoardAndElfs, MutableList<Pushes>>()
+        val allBoards = mutableMapOf<BoardAndElves, MutableList<Pushes>>()
 
         repeat(150) { step ->
             pushesRemain = (150 - step) / 2 - 1
@@ -227,12 +234,35 @@ fun performGame() {
             log("step $step")
 
             val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input)
+            if (step ==0) {
+                val fields: MutableList<BitField> = Point.points.flatten()
+                    .map { p -> gameBoard.bitBoard[p] }
+                    .toMutableList()
+                fields.add(gameBoard.bitBoard.ourField())
+                fields.add(gameBoard.bitBoard.enemyField())
+                val vi = fields.filter { it.item != 0 }
+                    .map { Integer.bitCount(it.tile.and(0b0101)) }.sum()
+                val hi = fields.filter { it.item != 0 }
+                    .map { Integer.bitCount(it.tile.and(0b1010)) }.sum()
+                val v = fields.map { Integer.bitCount(it.tile.and(0b0101)) }.sum()
+                val h = fields.map { Integer.bitCount(it.tile.and(0b1010)) }.sum()
 
-            // Write an action using println()
-            // To debug: System.err.println("Debug messages...");
+                val key = if (vi < hi || (vi == hi && v < h)) {
+                    Fingerprint(vi.toByte(), hi.toByte(), v.toByte(), h.toByte())
+                } else {
+                    Fingerprint(hi.toByte(), vi.toByte(), h.toByte(), v.toByte())
+                }
+                if(fingerprints.containsKey(key)) {
+                    initProbabilities(fingerprints.get(key)!!)
+                }else {
+                    log("!unknown $key")
+                    initProbabilities(defaultP)
+                }
+            }
+
             if (turnType == 0) {
                 val duration = measureNanoTime {
-                    val prevMovesAtThisPosition = allBoards[BoardAndElfs(gameBoard, we.point, enemy.point)]
+                    val prevMovesAtThisPosition = allBoards[BoardAndElves(gameBoard, we.point, enemy.point)]
 
                     log("consecutiveDraws=$numberOfDraws drawsWOMoves=$numberOfDrawsWithoutMoves duplicate=${prevMovesAtThisPosition != null}")
 
@@ -248,20 +278,20 @@ fun performGame() {
                     )
 
                     lastBoard = gameBoard
-                    lastBoardAndElfs = BoardAndElfs(gameBoard, we.point, enemy.point)
+                    lastBoardAndElves = BoardAndElves(gameBoard, we.point, enemy.point)
                     lastPush = bestMove
-
-                    while (System.nanoTime() - start < TimeUnit.MILLISECONDS.toNanos(30)) {
-                        log("time to sleep")
-                        Thread.sleep(10)
-                    }
-
-                    println("PUSH ${bestMove.rowColumn} ${bestMove.direction}")
-
                 }
 
-                log("Duration: ${TimeUnit.NANOSECONDS.toMillis(duration)}")
+                log("$step pushDuration: ${TimeUnit.NANOSECONDS.toMillis(duration)}")
+                while (System.nanoTime() - start < TimeUnit.MILLISECONDS.toNanos(30)) {
+                    log("time to sleep")
+                    Thread.sleep(10)
+                }
+
+                val bestMove = lastPush!!
+                println("PUSH ${bestMove.rowColumn} ${bestMove.direction}")
             } else {
+                var output:String? = null
                 val duration = measureNanoTime {
                     val bestPath = findBestMove(
                         gameBoard,
@@ -273,12 +303,7 @@ fun performGame() {
                         enemyQuests
                     )
 
-                    if (System.nanoTime() - start < TimeUnit.MILLISECONDS.toNanos(30)) {
-                        log("time to sleep")
-                        Thread.sleep(10)
-                    }
-
-                    if (bestPath != null) {
+                    output = if (bestPath != null) {
                         val directions = mutableListOf<Direction>()
                         var pathElem: PathElem = bestPath
                         while (pathElem.prev != null) {
@@ -287,15 +312,21 @@ fun performGame() {
                             pathElem = pathElem.prev!!
                         }
                         if (directions.isEmpty()) {
-                            println("PASS")
+                            "PASS"
                         } else {
-                            println("MOVE " + directions.joinToString(separator = " "))
+                            "MOVE " + directions.joinToString(separator = " ")
                         }
                     } else {
-                        println("PASS")
+                        "PASS"
                     }
                 }
-                log("Duration: ${TimeUnit.NANOSECONDS.toMillis(duration)}")
+                log("$step moveDuration: ${TimeUnit.NANOSECONDS.toMillis(duration)}")
+
+                if (System.nanoTime() - start < TimeUnit.MILLISECONDS.toNanos(30)) {
+                    log("time to sleep")
+                    Thread.sleep(10)
+                }
+                println(output!!)
             }
         }
     } catch (t: Throwable) {
@@ -308,7 +339,7 @@ val globalQuestsInGameOrder = mutableListOf<Int>()
 
 private fun findBestMove(
     gameBoard: GameBoard,
-    allBoards: MutableMap<BoardAndElfs, MutableList<Pushes>>,
+    allBoards: MutableMap<BoardAndElves, MutableList<Pushes>>,
     we: Player,
     ourQuests: Int,
     step: Int,
@@ -319,9 +350,9 @@ private fun findBestMove(
     val startTime = System.nanoTime()
     val lastPush = lastPush!!
     val lastBoard = lastBoard!!
-    val lastBoardAndElfs = lastBoardAndElfs!!
+    val lastBoardAndElves = lastBoardAndElves!!
     val wasDrawAtPrevMove = lastBoard == gameBoard
-    val wasMove = we.point != lastBoardAndElfs!!.ourElf || enemy.point != lastBoardAndElfs!!.enemyElf
+    val wasMove = we.point != lastBoardAndElves!!.ourElf || enemy.point != lastBoardAndElves!!.enemyElf
     val wasDrawSequence = numberOfDrawsWithoutMoves > 0
     val wasDrawSequenceLength = numberOfDrawsWithoutMoves
     if (wasDrawAtPrevMove) {
@@ -335,7 +366,7 @@ private fun findBestMove(
         numberOfDraws = 0
         numberOfDrawsWithoutMoves = 0
     }
-    val prevMoves = allBoards[lastBoardAndElfs]
+    val prevMoves = allBoards[lastBoardAndElves]
     if (!wasDrawAtPrevMove) {
         val enemyLastPush = tryFindEnemyPush(lastBoard, gameBoard, lastPush)
 
@@ -380,7 +411,7 @@ private fun findBestMove(
                     }
                 }
 
-                allBoards.computeIfAbsent(lastBoardAndElfs) { _ -> mutableListOf() }
+                allBoards.computeIfAbsent(lastBoardAndElves) { _ -> mutableListOf() }
                     .add(Pushes(lastPush, enemyLastPush))
             }
         }
@@ -425,7 +456,7 @@ private fun findBestMove(
             }
         }
 
-        allBoards.computeIfAbsent(lastBoardAndElfs) { _ -> mutableListOf() }
+        allBoards.computeIfAbsent(lastBoardAndElves) { _ -> mutableListOf() }
             .add(Pushes(lastPush, lastPush))
     }
 
@@ -503,13 +534,16 @@ private fun findBestMove(
         }
         count++
 
-        val pushAndMove = pushAndMove(
-            gameBoard,
-            pushes,
-            we,
-            ourNextQuests,
-            nextEnemy,
-            enemyNextQuests
+        val ourPlayer = we.push(pushes)
+        val enemyPlayer = nextEnemy.push(pushes)
+        val newBoard = gameBoard.push(pushes)
+        val pushAndMove = PushAndMove(
+            pushes = pushes,
+            board = newBoard,
+            ourPlayer = ourPlayer,
+            enemyPlayer = enemyPlayer,
+            ourQuests = ourNextQuests,
+            enemyQuests = enemyNextQuests
         )
         if (pushAndMove.board === gameBoard) {
             continue
@@ -710,7 +744,7 @@ data class Pushes(val ourPush: OnePush, val enemyPush: OnePush) {
                         }
                     }
                 }
-        }.shuffled(rand)
+        }
 
         var allPushes: List<Pushes> = (0..0).flatMap { ourRowColumn ->
             Direction.allDirections
@@ -724,7 +758,7 @@ data class Pushes(val ourPush: OnePush, val enemyPush: OnePush) {
                         }
                     }
                 }
-        }.shuffled(rand)
+        }
 
         fun installRealPushes() {
             allPushes = realAllPushes
@@ -780,7 +814,6 @@ data class PushAndMove(
             return@let 0.0
         }
 
-//        val secondaryScore = (pushOutItems(push) * 100 + space(push)).toDouble() / (34 * 100 + 48)
         val secondaryScore = (space(push).toDouble() + itemOnHandScore(push) * 25) / (50 + 25)
         val gameEstimate = if (push.pushes.collision()) {
             if (numberOfDraws == 0) {
@@ -820,12 +853,7 @@ private fun findBestPush(
         enemyQuests
     )
     probablyLogCompilation()
-
-//    val result = if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(10)) {
-//        selectBestPushByTwoComparators(pushes)
-//    } else {
     val result = selectPivotSolver(we, enemy, pushes, step, numberOfDraws, prevPushesAtThisPosition)
-//    }
     probablyLogCompilation()
     return result
 }
@@ -862,7 +890,7 @@ fun computeEstimate(
     }
 }
 
-val a = Array<DoubleArray>(28) { DoubleArray(28) { 0.0 } } // interior[column][row]
+val a = Array(28) { DoubleArray(28) { 0.0 } } // interior[column][row]
 val stringBuilder = StringBuilder(10_000)
 
 //pivot method from https://www.math.ucla.edu/~tom/Game_Theory/mat.pdf
@@ -895,16 +923,9 @@ private fun selectPivotSolver(
         pushes
     } else {
         prevOurPushes!!
-        if (numberOfDraws == 0) {
-            val enemyType = nonDrawRepetitions[prevEnemyPushes.size]
-            log("enemy type $enemyType")
-            when (enemyType) {
-                NOT_PREVIOUS_MOVE -> pushes.filterNot { it.pushes.enemyPush == prevEnemyPushes.last() }
-                SAME_MOVE -> pushes.filter { it.pushes.enemyPush == prevEnemyPushes.last() }
-                else -> pushes
-            }
-        } else {
-            val enemyType = if (drawRepetitions[numberOfDraws] == UNKNOWN) {
+        val isDraw = numberOfDraws != 0
+        val enemyType = if (isDraw) {
+            if (drawRepetitions[numberOfDraws] == UNKNOWN) {
                 val type = drawRepetitions[numberOfDraws - 1]
                 log("I guess that enemy type is $type")
                 type
@@ -913,11 +934,34 @@ private fun selectPivotSolver(
                 log("enemy type $type")
                 type
             }
-            when (enemyType) {
-                NOT_PREVIOUS_MOVE -> pushes.filterNot { it.pushes.enemyPush == prevEnemyPushes.last() || it.pushes.enemyPush == prevEnemyPushes.last().opposite }
-                SAME_MOVE -> pushes.filter { it.pushes.enemyPush == prevEnemyPushes.last() || it.pushes.enemyPush == prevEnemyPushes.last().opposite }
-                else -> pushes
+        } else {
+            val type = nonDrawRepetitions[prevEnemyPushes.size]
+            log("enemy type $type")
+            type
+        }
+        val weLose = we.numPlayerCards > enemy.numPlayerCards
+        val weLoseOrDrawAtEarlyGame = weLose || (we.numPlayerCards == enemy.numPlayerCards && step < 50)
+        val excludeOur = weLose
+                && (numberOfDraws > 2 || numberOfDraws == 0)
+                && enemyType == SAME_MOVE
+        if (excludeOur) {
+            log("filter out our pushes: $prevOurPushes")
+        }
+
+        when (enemyType) {
+            NOT_PREVIOUS_MOVE -> pushes.filterNot {
+                val lastEnemyPush = prevEnemyPushes.last()
+                it.pushes.enemyPush == lastEnemyPush
+                        || (isDraw && it.pushes.enemyPush == lastEnemyPush.opposite)
             }
+            SAME_MOVE -> pushes.filter {
+                val lastEnemyPush = prevEnemyPushes.last()
+                it.pushes.enemyPush == lastEnemyPush
+                        || (isDraw && it.pushes.enemyPush == lastEnemyPush.opposite)
+                        || (excludeOur && it.pushes.ourPush != prevOurPushes.last())
+            }
+            else -> pushes
+
         }
     }
 
@@ -1112,54 +1156,6 @@ private fun selectPivotSolver(
 
 }
 
-private fun selectBestPushByTwoComparators(pushes: List<PushAndMove>): OnePush {
-    log("twoComparators")
-    val comparator =
-        caching(PushSelectors.itemsCountDiffMin)
-            .thenComparing(caching(PushSelectors.itemsCountDiffAvg))
-            .thenComparing(caching(PushSelectors.pushOutItemsAvg))
-            .thenComparing(caching(PushSelectors.spaceAvg))
-
-    val enemyComparator =
-        caching(PushSelectors.itemsCountDiffMax)
-            .thenComparing(caching(PushSelectors.itemsCountDiffAvg))
-            .thenComparing(caching(PushSelectors.pushOutItemsAvg))
-            .thenComparing(caching(PushSelectors.spaceAvg))
-
-    val enemyBestMoves = pushes
-        .asSequence()
-        .groupBy { it.pushes.enemyPush }
-        .toList()
-        .sortedWith(Comparator { left, right ->
-            enemyComparator.compare(
-                left.second,
-                right.second
-            )
-        })
-        .take(10)
-        .map { it.first }
-        .toList()
-
-    enemyBestMoves.mapIndexed { index, onePush ->
-        log("Expected enemy move #$index is $onePush")
-    }
-
-    val (bestMove) = pushes
-        .filter { enemyBestMoves.contains(it.pushes.enemyPush) }
-        .groupBy { it.pushes.ourPush }
-        .maxWith(Comparator { left, right ->
-            comparator.compare(
-                left.value,
-                right.value
-            )
-        })!!
-
-//    println(PushResultTable(pushes))
-
-    return bestMove
-}
-
-
 fun computePushes(
     gameBoard: GameBoard,
     we: Player,
@@ -1173,13 +1169,16 @@ fun computePushes(
         if (forbiddenPushMoves.contains(pushes.ourPush)) {
             continue
         }
-        val pushAndMove = pushAndMove(
-            gameBoard,
-            pushes,
-            we,
-            ourQuests,
-            enemy,
-            enemyQuests
+        val ourPlayer = we.push(pushes)
+        val enemyPlayer = enemy.push(pushes)
+        val newBoard = gameBoard.push(pushes)
+        val pushAndMove = PushAndMove(
+            pushes = pushes,
+            board = newBoard,
+            ourPlayer = ourPlayer,
+            enemyPlayer = enemyPlayer,
+            ourQuests = ourQuests,
+            enemyQuests = enemyQuests
         )
         result.add(pushAndMove)
     }
@@ -1187,129 +1186,7 @@ fun computePushes(
     return result
 }
 
-private fun pushAndMove(
-    gameBoard: GameBoard,
-    pushes: Pushes,
-    we: Player,
-    ourQuests: Int,
-    enemy: Player,
-    enemyQuests: Int
-): PushAndMove {
-    val ourPlayer = we.push(pushes)
-    val enemyPlayer = enemy.push(pushes)
-    val newBoard = gameBoard.push(pushes)
-
-    val pushAndMove = PushAndMove(
-        pushes = pushes,
-        board = newBoard,
-        ourPlayer = ourPlayer,
-        enemyPlayer = enemyPlayer,
-        ourQuests = ourQuests,
-        enemyQuests = enemyQuests
-    )
-
-    return pushAndMove
-}
-
-@Suppress("unused")
-private fun comparePathsWithDomains(
-    newBoard: GameBoard,
-    ourPlayer: Player,
-    ourQuests: Int,
-    enemyPlayer: Player,
-    enemyQuests: Int,
-    pushAndMove: PushAndMove
-) {
-
-    val ourPaths: List<PathElem> = newBoard.findPaths(ourPlayer, ourQuests)
-    val enemyPaths: List<PathElem> = newBoard.findPaths(enemyPlayer, enemyQuests)
-    val enemySpace = enemyPaths.groupBy { it.point }.size
-    val ourSpace = ourPaths.groupBy { it.point }.size
-    val enemyQuestCompleted =
-        enemyPaths.maxBy { Integer.bitCount(it.itemsTakenSet) }!!.itemsTakenSet.let { Integer.bitCount(it) }
-    val ourQuestCompleted =
-        ourPaths.maxBy { Integer.bitCount(it.itemsTakenSet) }!!.itemsTakenSet.let { Integer.bitCount(it) }
-    if (pushAndMove.enemySpace != enemySpace
-        || pushAndMove.ourSpace != ourSpace
-        || pushAndMove.enemyQuestCompleted != enemyQuestCompleted
-        || pushAndMove.ourQuestCompleted != ourQuestCompleted
-    ) {
-        System.err.println("!!!!")
-    }
-
-}
-
-@Suppress("unused", "NestedLambdaShadowedImplicitParameter")
-class PushResultTable(pushes: List<PushAndMove>) {
-    data class PushResult(val itemsCountDiff: Int, val pushOutItems: Int, val space: Int)
-
-    private fun calcPushResult(push: PushAndMove): PushResult {
-        return PushResult(
-            itemsCountDiff(push),
-            pushOutItems(push),
-            space(push)
-        )
-    }
-
-    private val table = pushes
-        .groupBy { it.pushes.ourPush }
-        .mapValues {
-            it.value.map { it.pushes.enemyPush to calcPushResult(it) }.toMap()
-        }
-
-    override fun toString(): String {
-        val header =
-            "our\\enemy |  " + Direction.allDirections.flatMap { dir ->
-                (0..6).map { rc ->
-                    "${
-                        dir.name.padStart(
-                            5
-                        )
-                    }$rc"
-                }
-            }
-                .joinToString(separator = "    | ")
-        val rows = Direction.allDirections.flatMap { dir ->
-            (0..6).map { rc ->
-                val header = "  ${dir.name.padStart(5)}$rc  | "
-                val columns = Direction.allDirections.flatMap { enemyDir ->
-                    (0..6).map { enemyRc ->
-                        val pushResult = table[onePush(dir, rc)]!![onePush(enemyDir, enemyRc)]!!
-                        val itemsCountDiff = pushResult.itemsCountDiff.toString().padStart(2)
-                        val pushOutItems = pushResult.pushOutItems.toString().padStart(3)
-                        val space = pushResult.space.toString().padStart(3)
-                        "$itemsCountDiff,$pushOutItems,$space"
-                    }
-                }.joinToString(separator = " |")
-                header + columns
-            }
-        }.joinToString(separator = "\n")
-        return header + "\n" + rows
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-fun <U : Comparable<U>> caching(funct: (pushesAndMoves: List<PushAndMove>) -> Comparable<U>): Comparator<List<PushAndMove>> {
-    val cache = IdentityHashMap<Any, Any>()
-    return compareBy { pushesAndMoves: List<PushAndMove> ->
-        cache.computeIfAbsent(pushesAndMoves) {
-            funct(pushesAndMoves)
-        } as Comparable<U>
-    }
-}
-
 object PushSelectors {
-    fun itemsCountDiff(push: PushAndMove): Int {
-        return (push.ourQuestCompleted - push.enemyQuestCompleted)
-    }
-
-    private val itemCountDiff = { pushesAndMoves: List<PushAndMove> ->
-        pushesAndMoves.map(this::itemsCountDiff)
-    }
-
-    val itemsCountDiffMax = { pushesAndMoves: List<PushAndMove> -> itemCountDiff(pushesAndMoves).max()!! }
-    val itemsCountDiffMin = { pushesAndMoves: List<PushAndMove> -> itemCountDiff(pushesAndMoves).min()!! }
-    val itemsCountDiffAvg = { pushesAndMoves: List<PushAndMove> -> itemCountDiff(pushesAndMoves).average() }
 
     fun itemOnHandScore(push: PushAndMove): Int {
         val ourScore = if (push.ourDomain.hasAccessToBorder && push.ourFieldOnHand.ourQuestItem(
@@ -1334,57 +1211,9 @@ object PushSelectors {
         return ourScore - enemyScore
     }
 
-    fun pushOutItems(push: PushAndMove): Int {
-        val ourScore = pushOutItems(push, push.ourPlayer.playerId, push.ourQuests)
-        val enemyScore = pushOutItems(push, push.enemyPlayer.playerId, push.enemyQuests)
-        return ourScore - enemyScore
-    }
-
-    private fun pushOutItems(push: PushAndMove, playerId: Int, quests: Int): Int {
-        val fieldOnHand = if (playerId == 0) {
-            push.ourFieldOnHand
-        } else {
-            push.enemyFieldOnHand
-        }
-        val onHandScore =
-            if (fieldOnHand.ourQuestItem(playerId, quests)) {
-                16
-            } else {
-                0
-            }
-
-        var otherItemsScore = 0
-        //todo 3 queries are better than 49 ones
-        for (y in (0..6)) {
-            for (x in (0..6)) {
-                if (push.board.bitBoard.get(y, x).ourQuestItem(playerId, quests)) {
-                    otherItemsScore += max(abs(3 - x), abs(3 - y)) * max(abs(3 - x), abs(3 - y))
-                }
-            }
-        }
-
-        return onHandScore + otherItemsScore
-    }
-
-    private val pushOutItems = { pushesAndMoves: List<PushAndMove> ->
-        pushesAndMoves.map {
-            pushOutItems(it)
-        }
-    }
-
-    val pushOutItemsAvg = { pushesAndMoves: List<PushAndMove> -> pushOutItems(pushesAndMoves).average() }
-
     fun space(push: PushAndMove): Int {
         return push.ourSpace - push.enemySpace
     }
-
-    val space = { pushesAndMoves: List<PushAndMove> ->
-        pushesAndMoves.map { push ->
-            push.ourSpace - push.enemySpace
-        }
-    }
-
-    val spaceAvg = { pushesAndMoves: List<PushAndMove> -> space(pushesAndMoves).average() }
 }
 
 class BoardDto(val board: List<List<Tile>>) {
@@ -1419,10 +1248,6 @@ data class BitField private constructor(val bits: Long) {
         fun bitField(bits: Long): BitField = cache[bits.toInt()]
     }
 
-    fun connected(field: BitField, direction: Direction): Boolean {
-        return connected(this.bits, direction, field.bits)
-    }
-
     fun containsQuestItem(playerId: Int, questsSet: Int): Boolean {
         return if (questsSet[item.absoluteValue]) {
             if (playerId == 0 && item > 0) {
@@ -1455,7 +1280,7 @@ private operator fun Int.get(index: Int): Boolean {
     return this and (1.shl(index)) != 0
 }
 
-private fun Int.set(index: Int): Int {
+fun Int.set(index: Int): Int {
     return this or (1.shl(index))
 }
 
@@ -1515,7 +1340,7 @@ data class PathElem(
 )
 
 class Domains {
-    private val domains = ArrayList<DomainInfo>(10)
+    private val domains = ArrayList<DomainInfo>(21)
 
     fun get(point: Point, ourQuestsSet: Int, enemyQuestsSet: Int): DomainInfo? {
 
@@ -1554,7 +1379,6 @@ class Domains {
     fun count(): Int{
         return domains.size
     }
-
 }
 
 data class BitBoard(val rows: LongArray, val hands: LongArray) {
@@ -2065,7 +1889,6 @@ data class Point private constructor(val x: Int, val y: Int) {
 @Suppress("unused")
 enum class Tile(val mask: Long, val roads: Int) {
     T0000(0b0000, 0),
-
     T0011(0b0011, 2),
     T0101(0b0101, 2),
     T0110(0b0110, 2),
@@ -2086,14 +1909,13 @@ enum class Tile(val mask: Long, val roads: Int) {
             return values().find { it.mask == mask }!!
         }
 
-        val tiles = Array<Tile>(16) { idx -> values().find { it.mask == idx.toLong() } ?: T0000 }
+        val tiles = Array(16) { idx -> values().find { it.mask == idx.toLong() } ?: T0000 }
     }
 
     fun connect(tile: Tile, direction: Direction): Boolean {
         return this.mask.and(direction.mask) != 0L && tile.mask.and(direction.opposite.mask) != 0L
     }
 }
-
 
 data class Player(
     val playerId: Int,
@@ -2202,7 +2024,6 @@ enum class Direction(val mask: Long, val isVertical: Boolean, val priority: Int)
     }
 }
 
-
 class TeeInputStream(private var source: InputStream, private var copySink: OutputStream) : InputStream() {
     @Throws(IOException::class)
     override fun read(): Int {
@@ -2262,53 +2083,6 @@ class TeeInputStream(private var source: InputStream, private var copySink: Outp
     }
 }
 
-fun calculateProbabilities(fields: MutableList<BitField>, threshold: Int): Array<IntArray> {
-    var count = 1
-    val oe: Array<IntArray> = Array(4) { IntArray(4) }
-    val quests = (0..11).toMutableList()
-    while (count <= threshold) {
-        fields.shuffle(rand)
-        val rows = fields.subList(0, 49)
-            .chunked(7)
-            .map { row ->
-                var result = 0L
-                for (i in (0..6)) {
-                    result = result.shl(9).or(row[i].bits)
-                }
-                result
-            }.toLongArray()
-        val hands = fields.subList(49, 51)
-            .map { it.bits }
-            .toLongArray()
-        val rboard = GameBoard(BitBoard(rows, hands))
-
-        val ourQuest = selectQuests(quests)
-        val enemyQuest = selectQuests(quests)
-        val ourD = rboard.findDomain(
-            Point.point(rand.nextInt(7), rand.nextInt(7)),
-            ourQuest,
-            enemyQuest
-        )
-        val enemyD = rboard.findDomain(
-            Point.point(rand.nextInt(7), rand.nextInt(7)),
-            ourQuest,
-            enemyQuest
-        )
-        oe[ourD.getOurQuestsCount()][enemyD.getEnemyQuestsCount()] += 1
-        count++
-    }
-    return oe
-}
-
-private fun selectQuests(quests: MutableList<Int>): Int {
-    quests.shuffle(rand)
-    var ourQuest = 0
-    quests.subList(0, 3).forEach {
-        ourQuest = ourQuest.set(it)
-    }
-    return ourQuest
-}
-
 object Warmup {
     init {
         log("warmup data read")
@@ -2325,7 +2099,7 @@ object Warmup {
             step = 0 // big limit
         )
         lastBoard = toPush.gameBoard
-        lastBoardAndElfs = BoardAndElfs(toPush.gameBoard, toPush.we.point, toPush.enemy.point)
+        lastBoardAndElves = BoardAndElves(toPush.gameBoard, toPush.we.point, toPush.enemy.point)
         log("warmup once move")
         findBestMove(
             gameBoard = toMove.gameBoard,
@@ -2484,3 +2258,5 @@ object Items {
 
     val NO_ITEM = 0
 }
+
+private val fingerprints: Map<Fingerprint, DoubleArray> = mapOf()
