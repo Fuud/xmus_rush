@@ -92,7 +92,8 @@ val nonDrawRepetitions = Array<RepetitionType>(150) { UNKNOWN }
 
 val drawRepetitionsStr: String
     get() {
-        return drawRepetitions.toList().subList(1, max(2, drawRepetitions.indexOfLast { it != UNKNOWN } + 1)).joinToString()
+        return drawRepetitions.toList().subList(1, max(2, drawRepetitions.indexOfLast { it != UNKNOWN } + 1))
+            .joinToString()
     }
 val nonDrawRepetitionsStr: String
     get() {
@@ -122,50 +123,50 @@ private fun initProbabilities(p: DoubleArray) {
     p22 /= sum
     val oe = doubleArrayOf(p00, p01, p02, p10, p11, p12, p20, p21, p22)
     for (o in (0 until 13)) {
-            for (e in (0 until 13)) {
-                if (o == e) {
-                    drawP[0][o][e] = 1.0
-                    estimate[0][o][e] = 0.5
-                } else if (e > o) {
-                    winP[0][o][e] = 1.0
-                    estimate[0][o][e] = 1.0
-                } else {
-                    loseP[0][o][e] = 1.0
-                }
+        for (e in (0 until 13)) {
+            if (o == e) {
+                drawP[0][o][e] = 1.0
+                estimate[0][o][e] = 0.5
+            } else if (e > o) {
+                winP[0][o][e] = 1.0
+                estimate[0][o][e] = 1.0
+            } else {
+                loseP[0][o][e] = 1.0
             }
         }
-        for (turn in (1 until 75)) {
-            for (o in (1 until 13)) {
-                loseP[turn][o][0] = 1.0
-            }
-            for (e in (1 until 13)) {
-                winP[turn][0][e] = 1.0
-                estimate[turn][0][e] = 1.0
-            }
-            drawP[turn][0][0] = 1.0
-            estimate[turn][0][0] = 0.5
+    }
+    for (turn in (1 until 75)) {
+        for (o in (1 until 13)) {
+            loseP[turn][o][0] = 1.0
         }
+        for (e in (1 until 13)) {
+            winP[turn][0][e] = 1.0
+            estimate[turn][0][e] = 1.0
+        }
+        drawP[turn][0][0] = 1.0
+        estimate[turn][0][0] = 0.5
+    }
 
-        for (turn in (1 until 75)) {
-            for (o in (1 until 13)) {
-                for (e in (1 until 13)) {
-                    for (oi in (0 until 3)) {
-                        for (ei in (0 until 3)) {
-                            val op = Math.max(o - oi, 0)
-                            val ep = Math.max(e - ei, 0)
-                            drawP[turn][o][e] += drawP[turn - 1][op][ep] * oe[oi + ei * 3]
-                            winP[turn][o][e] += winP[turn - 1][op][ep] * oe[oi + ei * 3]
-                            loseP[turn][o][e] += loseP[turn - 1][op][ep] * oe[oi + ei * 3]
-                        }
+    for (turn in (1 until 75)) {
+        for (o in (1 until 13)) {
+            for (e in (1 until 13)) {
+                for (oi in (0 until 3)) {
+                    for (ei in (0 until 3)) {
+                        val op = Math.max(o - oi, 0)
+                        val ep = Math.max(e - ei, 0)
+                        drawP[turn][o][e] += drawP[turn - 1][op][ep] * oe[oi + ei * 3]
+                        winP[turn][o][e] += winP[turn - 1][op][ep] * oe[oi + ei * 3]
+                        loseP[turn][o][e] += loseP[turn - 1][op][ep] * oe[oi + ei * 3]
                     }
-                    val sum = winP[turn][o][e] + drawP[turn][o][e] + loseP[turn][o][e]
-                    winP[turn][o][e] /= sum
-                    drawP[turn][o][e] /= sum
-                    loseP[turn][o][e] /= sum
-                    estimate[turn][o][e] = winP[turn][o][e] + drawP[turn][o][e] / 2
                 }
+                val sum = winP[turn][o][e] + drawP[turn][o][e] + loseP[turn][o][e]
+                winP[turn][o][e] /= sum
+                drawP[turn][o][e] /= sum
+                loseP[turn][o][e] /= sum
+                estimate[turn][o][e] = winP[turn][o][e] + drawP[turn][o][e] / 2
             }
         }
+    }
 }
 
 val twoDigitsAfterDotFormat = DecimalFormat().apply {
@@ -234,7 +235,7 @@ fun performGame() {
             log("step $step")
 
             val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input)
-            if (step ==0) {
+            if (step == 0) {
                 val fields: MutableList<BitField> = Point.points.flatten()
                     .map { p -> gameBoard.bitBoard[p] }
                     .toMutableList()
@@ -252,9 +253,9 @@ fun performGame() {
                 } else {
                     Fingerprint(hi.toByte(), vi.toByte(), h.toByte(), v.toByte())
                 }
-                if(fingerprints.containsKey(key)) {
+                if (fingerprints.containsKey(key)) {
                     initProbabilities(fingerprints.get(key)!!)
-                }else {
+                } else {
                     log("!unknown $key")
                     initProbabilities(defaultP)
                 }
@@ -291,7 +292,7 @@ fun performGame() {
                 val bestMove = lastPush!!
                 println("PUSH ${bestMove.rowColumn} ${bestMove.direction}")
             } else {
-                var output:String? = null
+                var output: String? = null
                 val duration = measureNanoTime {
                     val bestPath = findBestMove(
                         gameBoard,
@@ -528,7 +529,7 @@ private fun findBestMove(
     }
     val nextEnemy = enemy.copy(numPlayerCards = enemyNextNumCards)
     for (pushes in Pushes.allPushes) {
-        if (System.nanoTime() - startTime > timeLimit*2 && count > 0) {
+        if (System.nanoTime() - startTime > timeLimit * 2 && count > 0) {
             log("stop computePushes, computed $count pushes")
             break
         }
@@ -853,7 +854,90 @@ private fun findBestPush(
         enemyQuests
     )
     probablyLogCompilation()
-    val result = selectPivotSolver(we, enemy, pushes, step, numberOfDraws, prevPushesAtThisPosition)
+
+//    val result = if (deadlineTimeNanos - System.nanoTime() < TimeUnit.MILLISECONDS.toNanos(10)) {
+//    val result =     selectBestPushByTwoComparators(pushes)
+//    } else {
+
+    val weLose = we.numPlayerCards > enemy.numPlayerCards
+    val weLoseOrDrawAtEarlyGame = weLose || (we.numPlayerCards == enemy.numPlayerCards && step < 50)
+    val excludeOur = weLoseOrDrawAtEarlyGame && numberOfDraws > 3
+
+    val result = if (prevPushesAtThisPosition != null && numberOfDraws > 0 && !excludeOur) {
+
+        val ourBestPush = prevPushesAtThisPosition.last().ourPush
+
+        val enemyBestResponse = pushes.minBy {
+            if (it.pushes.ourPush != ourBestPush) {
+                2.0 // bigger than any valid score
+            } else {
+                it.score
+            }
+        }!!
+
+        val ourBestResponseOnEnemyResponse = pushes.maxBy {
+            if (it.pushes.enemyPush != enemyBestResponse.pushes.enemyPush) {
+                -2.0 // bigger than any valid score
+            } else {
+                it.score
+            }
+        }!!
+
+        log(
+            "we think that the best move is $ourBestPush, but enemy can respond with ${enemyBestResponse.pushes.enemyPush} with score=${enemyBestResponse.score}, " +
+                    "collision=${enemyBestResponse.pushes.collision()}"
+        )
+
+        if (enemyBestResponse.pushes.collision()) {
+            log("as collision is the best enemy response, lets proceed")
+            ourBestPush
+        } else {
+            log("our best respond on enemy respond is ${ourBestResponseOnEnemyResponse.pushes.ourPush} with score=${ourBestResponseOnEnemyResponse.score};")
+
+            val ourMoves = arrayOf(ourBestPush, ourBestResponseOnEnemyResponse.pushes.ourPush)
+            val enemyMoves = arrayOf(enemyBestResponse.pushes.enemyPush, ourBestPush, ourBestPush.opposite)
+
+            for ((ourIdx, ourMove) in ourMoves.withIndex()) {
+                for ((enemyIdx, enemyMove) in enemyMoves.withIndex()) {
+                    a[enemyIdx][ourIdx] =
+                        pushes.single { it.pushes.ourPush == ourMove && it.pushes.enemyPush == enemyMove }.score
+                }
+            }
+
+            val solution = solvePivot(a, enemyMoves.size, ourMoves.size)
+
+            log(
+                "our reduced strategy: ${
+                    solution.ourStrategy.zip(ourMoves).sortedByDescending { it.first }
+                        .map { "${it.second}=${twoDigitsAfterDotFormat.format(it.first)}" }
+                }"
+            )
+            log(
+                "enemy reduced strategy: ${
+                    solution.enemyStrategy.zip(enemyMoves).sortedByDescending { it.first }
+                        .map { "${it.second}=${twoDigitsAfterDotFormat.format(it.first)}" }
+                }"
+            )
+
+            val (firstStrat, secondStrat) = solution.ourStrategy.zip(ourMoves).sortedByDescending { it.first }
+
+            if (secondStrat.first > firstStrat.first * 0.8) {
+                val selection = rand.nextDouble()
+
+                if (selection < firstStrat.first) {
+                    firstStrat.second
+                } else {
+                    secondStrat.second
+                }
+            } else {
+                firstStrat.second
+            }
+        }
+    } else {
+
+        selectPivotSolver(we, enemy, pushes, step, numberOfDraws, prevPushesAtThisPosition)
+    }
+//    }
     probablyLogCompilation()
     return result
 }
@@ -1002,6 +1086,58 @@ private fun selectPivotSolver(
         log(stringBuilder.toString())
     }
 
+    val result = solvePivot(a, ENEMY_SIZE, OUR_SIZE)
+
+    val (ourStrategy, enemyStrategy, score) = result
+
+    val selection = rand.nextDouble()
+
+    log(
+        "OurStrategy: ${
+            ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
+                .sortedByDescending { it.second }
+                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+        }"
+    )
+    log(
+        "EnemyStrategy: ${
+            enemyStrategy.mapIndexed { idx, score -> enemyPushes[idx] to score }
+                .sortedByDescending { it.second }
+                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+        }"
+    )
+
+    log("selection=$selection ourSum=${ourStrategy.sum()} enemySum=${enemyStrategy.sum()}")
+
+    run {
+        val theBest = ourStrategy
+            .mapIndexed { idx, score -> ourPushes[idx] to score }
+            .sortedByDescending { it.second }
+            .first()
+
+        val best = ourStrategy
+            .mapIndexed { idx, score -> ourPushes[idx] to score }
+            .sortedByDescending { it.second }
+            .filter { it.second > theBest.second * 0.8 }
+
+        val norm = best.sumByDouble { it.second }
+        var currentSum = 0.0
+        for (idx in best.indices) {
+            currentSum += best[idx].second
+            if (currentSum >= selection * norm) {
+                return best[idx].first
+            }
+        }
+    }
+    throw IllegalStateException("aaaaa")
+
+}
+
+private fun solvePivot(a: Array<DoubleArray>, ENEMY_SIZE: Int, OUR_SIZE: Int): PivotSolverResult {
+    var threshold = 0.0000001
+    fun r(value: Double): Double =
+        if (value > -threshold && value < threshold) 0.0 else value
+
     val hLabel = IntArray(ENEMY_SIZE) { idx -> -idx - 1 } // y_i are represented by negative ints
     val vLabel = IntArray(OUR_SIZE) { idx -> idx + 1 } // x_i are represented by  positives ints
 
@@ -1118,43 +1254,11 @@ private fun selectPivotSolver(
         }
     }
 
-    val selection = rand.nextDouble()
-
-    log(
-        "OurStrategy: ${
-            ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
-                .sortedByDescending { it.second }
-                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
-        }"
-    )
-    log(
-        "EnemyStrategy: ${
-            enemyStrategy.mapIndexed { idx, score -> enemyPushes[idx] to score }
-                .sortedByDescending { it.second }
-                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
-        }"
-    )
-
-    log("selection=$selection ourSum=${ourStrategy.sum()} enemySum=${enemyStrategy.sum()}")
-
-    run {
-        val best = ourStrategy
-            .mapIndexed { idx, score -> ourPushes[idx] to score }
-            .sortedByDescending { it.second }
-            .take(1)
-        val norm = best.sumByDouble { it.second }
-        var currentSum = 0.0
-        for (idx in best.indices) {
-            currentSum += best[idx].second
-            if (currentSum >= selection * norm) {
-                return best[idx].first
-            }
-        }
-    }
-
-    throw IllegalStateException("aaaaa")
-
+    val result = PivotSolverResult(ourStrategy, enemyStrategy, resultScore)
+    return result
 }
+
+data class PivotSolverResult(val ourStrategy: DoubleArray, val enemyStrategy: DoubleArray, val score: Double)
 
 fun computePushes(
     gameBoard: GameBoard,
@@ -1376,7 +1480,7 @@ class Domains {
         domains.add(domain)
     }
 
-    fun count(): Int{
+    fun count(): Int {
         return domains.size
     }
 }
@@ -1934,7 +2038,7 @@ data class Player(
     val point: Point = Point.point(playerX, playerY)
 
     fun push(pushes: Pushes): Player {
-        if (pushes.collision()){
+        if (pushes.collision()) {
             return this
         }
         var x = playerX
