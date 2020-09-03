@@ -854,7 +854,7 @@ private fun findBestPush(
 //    } else {
     val result = if (prevPushesAtThisPosition != null) {
 
-        val ourBestPush = selectPivotSolver(pushes, numberOfDraws, prevPushesAtThisPosition)
+        val ourBestPush = prevPushesAtThisPosition.last().ourPush
 
         val enemyBestResponse = pushes.minBy {
             if (it.pushes.ourPush != ourBestPush) {
