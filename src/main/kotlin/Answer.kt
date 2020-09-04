@@ -1457,7 +1457,8 @@ data class GameBoard(val bitBoard: BitBoard) {
     private val cachedPaths = arrayOfNulls<MutableList<PathElem>>(2)
     val domains = Domains()
     private var parent: GameBoard? = null
-    private var pushFromParent: Pushes? = null
+    private var pushesFromParent: Pushes? = null
+    private var pushFromParent: OnePush? = null
 
     companion object {
         val pooledList1 = arrayListOf<PathElem>()
@@ -1499,22 +1500,20 @@ data class GameBoard(val bitBoard: BitBoard) {
         }
 
         if (parent != null) {
-            val cachedValue = parent!!.domains.get(point, ourQuestsSet, enemyQuestsSet)
-            if (cachedValue != null) {
-                val pushes = pushFromParent!!
-                val affectOurX = pushes.ourPush.direction.isVertical
-                        && cachedValue.maxX + 1 >= pushes.ourPush.rowColumn
-                        && cachedValue.minX - 1 <= pushes.ourPush.rowColumn
-                val affectOurY = !pushes.ourPush.direction.isVertical
-                        && cachedValue.maxY + 1 >= pushes.ourPush.rowColumn
-                        && cachedValue.minY - 1 <= pushes.ourPush.rowColumn
-                val affectEnemyX = pushes.enemyPush.direction.isVertical
-                        && cachedValue.maxX + 1 >= pushes.enemyPush.rowColumn
-                        && cachedValue.minX - 1 <= pushes.enemyPush.rowColumn
-                val affectEnemyY = !pushes.enemyPush.direction.isVertical
-                        && cachedValue.maxY + 1 >= pushes.enemyPush.rowColumn
-                        && cachedValue.minY - 1 <= pushes.enemyPush.rowColumn
-                if (!(affectEnemyX || affectEnemyY || affectOurX || affectOurY)) {
+            if (pushesFromParent != null) {
+                val cachedValue = parent!!.domains.get(point, ourQuestsSet, enemyQuestsSet)
+                if (cachedValue != null) {
+                    val pushes = pushesFromParent!!
+                    val affectOur = affectPush(pushes.ourPush, cachedValue)
+                    val affectEnemy = affectPush(pushes.enemyPush, cachedValue)
+                    if (!(affectEnemy || affectOur)) {
+                        cached++
+                        return cachedValue
+                    }
+                }
+            } else if (pushFromParent != null) {
+                val cachedValue = parent!!.domains.get(point, ourQuestsSet, enemyQuestsSet)
+                if (cachedValue != null && !affectPush(pushFromParent!!, cachedValue)) {
                     cached++
                     return cachedValue
                 }
@@ -1581,6 +1580,17 @@ data class GameBoard(val bitBoard: BitBoard) {
         domains.set(domain)
 
         return domain
+    }
+
+    private fun affectPush(push: OnePush, cachedValue: DomainInfo): Boolean {
+        val affectOurX = push.direction.isVertical
+                && cachedValue.maxX + 1 >= push.rowColumn
+                && cachedValue.minX - 1 <= push.rowColumn
+        val affectOurY = !push.direction.isVertical
+                && cachedValue.maxY + 1 >= push.rowColumn
+                && cachedValue.minY - 1 <= push.rowColumn
+        val affectOur = affectOurX || affectOurY
+        return affectOur
     }
 
     operator fun get(point: Point) = bitBoard[point]
@@ -1678,6 +1688,32 @@ data class GameBoard(val bitBoard: BitBoard) {
         return cachedPaths[player.playerId]!!
     }
 
+    fun push(push: OnePush, player: Player): GameBoard {
+        val rows = bitBoard.rows.clone()
+        val hands = bitBoard.hands.clone()
+        val direction = push.direction
+        val rowColumn = push.rowColumn
+        val playerId = player.playerId
+        if (direction == LEFT || direction == RIGHT) {
+            if (direction == LEFT) {
+                BitBoard.pushLeft(rowColumn, rows, hands, playerId)
+            } else {
+                BitBoard.pushRight(rowColumn, rows, hands, playerId)
+            }
+        } else {
+            if (direction == UP) {
+                BitBoard.pushUp(rowColumn, rows, hands, playerId)
+            } else {
+                BitBoard.pushDown(rowColumn, rows, hands, playerId)
+            }
+        }
+        return GameBoard(BitBoard(rows, hands)).apply {
+            parent = this@GameBoard
+            pushesFromParent = null
+            pushFromParent = push
+        }
+    }
+
     fun push(pushes: Pushes): GameBoard {
         if (pushes.collision()) {
             return this
@@ -1733,7 +1769,8 @@ data class GameBoard(val bitBoard: BitBoard) {
 
         return GameBoard(BitBoard(rows, hands)).apply {
             parent = this@GameBoard
-            pushFromParent = pushes
+            pushesFromParent = pushes
+            pushFromParent = null
         }
     }
 
