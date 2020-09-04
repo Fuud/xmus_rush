@@ -4,8 +4,6 @@ import BitField.Companion.bitField
 import Direction.*
 import Items.NO_ITEM
 import OnePush.Companion.onePush
-import PushSelectors.itemOnHandScore
-import PushSelectors.space
 import RepetitionType.*
 import java.io.IOException
 import java.io.InputStream
@@ -781,51 +779,24 @@ data class PushAndMove(
 
     val ourDomain = board.findDomain(ourPlayer.point, ourQuests, enemyQuests)
     val enemyDomain = board.findDomain(enemyPlayer.point, ourQuests, enemyQuests)
-    val ourFieldOnHand = board.bitBoard.ourField()
-    val enemyFieldOnHand = board.bitBoard.enemyField()
 
-    val enemySpace = enemyDomain.size
-    val ourSpace = ourDomain.size
     val enemyQuestCompleted = enemyDomain.getEnemyQuestsCount()
     val ourQuestCompleted = ourDomain.getOurQuestsCount()
 
     val score: Double = this.let { push ->
         val ourItemRemain = push.ourPlayer.numPlayerCards - push.ourQuestCompleted
         val enemyItemRemain = push.enemyPlayer.numPlayerCards - push.enemyQuestCompleted
-        if (ourItemRemain == 0) {
-            if (enemyItemRemain == 0) {
-                val enemyPushToLastQuest = push.enemyPlayer.numPlayerCards == 1 &&
-                        push.board[push.enemyPlayer.point].item < 0
-                val ourPushToLastQuest = push.ourPlayer.numPlayerCards == 1 &&
-                        push.board[push.ourPlayer.point].item > 0
-                if (enemyPushToLastQuest.xor(ourPushToLastQuest)) {
-                    if (enemyPushToLastQuest) {
-                        return@let 0.0
-                    } else {
-                        return@let 1.0
-                    }
-                }
-                return@let 0.5
-            } else {
-                return@let 1.0
-            }
-        }
-        if (enemyItemRemain == 0) {
-            return@let 0.0
-        }
+        val collision = push.pushes.collision()
 
-        val secondaryScore = (space(push).toDouble() + itemOnHandScore(push) * 25) / (50 + 25)
-        val gameEstimate = if (push.pushes.collision()) {
-            if (numberOfDraws == 0) {
-                computeEstimate(ourItemRemain, enemyItemRemain, Math.max(pushesRemain - 1, 0), secondaryScore)
-            } else {
-                computeEstimate(ourItemRemain, enemyItemRemain, 9 - numberOfDraws, secondaryScore)
-            }
-        } else {
-            computeEstimate(ourItemRemain, enemyItemRemain, pushesRemain, secondaryScore)
-        }
-
-        return@let gameEstimate
+        return@let push.board.score(
+            push.ourPlayer,
+            push.ourQuests,
+            ourItemRemain,
+            push.enemyPlayer,
+            push.enemyQuests,
+            enemyItemRemain,
+            collision
+        )
     }
 }
 
@@ -1188,31 +1159,12 @@ fun computePushes(
 
 object PushSelectors {
 
-    fun itemOnHandScore(push: PushAndMove): Int {
-        val ourScore = if (push.ourDomain.hasAccessToBorder && push.ourFieldOnHand.ourQuestItem(
-                push.ourPlayer.playerId,
-                push.ourQuests
-            )
-        ) {
+    fun itemOnHandScore(player: Player, domain: DomainInfo, handField: BitField, questSet: Int): Int {
+        return if (domain.hasAccessToBorder && handField.ourQuestItem(player.playerId, questSet)) {
             1
         } else {
             0
         }
-        val enemyScore = if (push.enemyDomain.hasAccessToBorder && push.enemyFieldOnHand.ourQuestItem(
-                push.enemyPlayer.playerId,
-                push.enemyQuests
-            )
-        ) {
-            1
-        } else {
-            0
-        }
-
-        return ourScore - enemyScore
-    }
-
-    fun space(push: PushAndMove): Int {
-        return push.ourSpace - push.enemySpace
     }
 }
 
@@ -1550,14 +1502,18 @@ data class GameBoard(val bitBoard: BitBoard) {
             val cachedValue = parent!!.domains.get(point, ourQuestsSet, enemyQuestsSet)
             if (cachedValue != null) {
                 val pushes = pushFromParent!!
-                val affectOurX =
-                    pushes.ourPush.direction.isVertical && cachedValue.maxX + 1 >= pushes.ourPush.rowColumn && cachedValue.minX - 1 <= pushes.ourPush.rowColumn
-                val affectOurY =
-                    !pushes.ourPush.direction.isVertical && cachedValue.maxY + 1 >= pushes.ourPush.rowColumn && cachedValue.minY - 1 <= pushes.ourPush.rowColumn
-                val affectEnemyX =
-                    pushes.enemyPush.direction.isVertical && cachedValue.maxX + 1 >= pushes.enemyPush.rowColumn && cachedValue.minX - 1 <= pushes.enemyPush.rowColumn
-                val affectEnemyY =
-                    !pushes.enemyPush.direction.isVertical && cachedValue.maxY + 1 >= pushes.enemyPush.rowColumn && cachedValue.minY - 1 <= pushes.enemyPush.rowColumn
+                val affectOurX = pushes.ourPush.direction.isVertical
+                        && cachedValue.maxX + 1 >= pushes.ourPush.rowColumn
+                        && cachedValue.minX - 1 <= pushes.ourPush.rowColumn
+                val affectOurY = !pushes.ourPush.direction.isVertical
+                        && cachedValue.maxY + 1 >= pushes.ourPush.rowColumn
+                        && cachedValue.minY - 1 <= pushes.ourPush.rowColumn
+                val affectEnemyX = pushes.enemyPush.direction.isVertical
+                        && cachedValue.maxX + 1 >= pushes.enemyPush.rowColumn
+                        && cachedValue.minX - 1 <= pushes.enemyPush.rowColumn
+                val affectEnemyY = !pushes.enemyPush.direction.isVertical
+                        && cachedValue.maxY + 1 >= pushes.enemyPush.rowColumn
+                        && cachedValue.minY - 1 <= pushes.enemyPush.rowColumn
                 if (!(affectEnemyX || affectEnemyY || affectOurX || affectOurY)) {
                     cached++
                     return cachedValue
@@ -1781,6 +1737,59 @@ data class GameBoard(val bitBoard: BitBoard) {
         }
     }
 
+    fun score(
+        ourPlayer: Player,
+        ourQuests: Int,
+        ourItemRemain: Int,
+        enemyPlayer: Player,
+        enemyQuests: Int,
+        enemyItemRemain: Int,
+        collision: Boolean
+    ): Double {
+        if (ourItemRemain == 0) {
+            if (enemyItemRemain == 0) {
+                val enemyPushToLastQuest = enemyPlayer.numPlayerCards == 1
+                        && this[enemyPlayer.point].item < 0
+                val ourPushToLastQuest = ourPlayer.numPlayerCards == 1
+                        && this[ourPlayer.point].item > 0
+                if (enemyPushToLastQuest.xor(ourPushToLastQuest)) {
+                    if (enemyPushToLastQuest) {
+                        return 0.0
+                    } else {
+                        return 1.0
+                    }
+                }
+                return 0.5
+            } else {
+                return 1.0
+            }
+        }
+        if (enemyItemRemain == 0) {
+            return 0.0
+        }
+        val ourFieldOnHand = bitBoard.ourField()
+        val enemyFieldOnHand = bitBoard.enemyField()
+        val ourDomain = findDomain(ourPlayer.point, ourQuests, enemyQuests)
+        val enemyDomain = findDomain(enemyPlayer.point, ourQuests, enemyQuests)
+
+        val spaceScore = ourDomain.size - enemyDomain.size
+        val ourHandScore = PushSelectors.itemOnHandScore(ourPlayer, ourDomain, ourFieldOnHand, ourQuests)
+        val enemyHandScore = PushSelectors.itemOnHandScore(enemyPlayer, enemyDomain, enemyFieldOnHand, enemyQuests)
+        val secondaryScore = (spaceScore + (ourHandScore - enemyHandScore) * 25.0) / (50 + 25)
+        val gameEstimate = if (collision) {
+            if (numberOfDraws == 0) {
+                computeEstimate(ourItemRemain, enemyItemRemain, Math.max(pushesRemain - 1, 0), secondaryScore)
+            } else {
+                computeEstimate(ourItemRemain, enemyItemRemain, 9 - numberOfDraws, secondaryScore)
+            }
+        } else {
+            computeEstimate(ourItemRemain, enemyItemRemain, pushesRemain, secondaryScore)
+        }
+
+        return gameEstimate
+    }
+
+
     private fun Point.can(direction: Direction) = when (direction) {
         UP -> canUp(this)
         DOWN -> canDown(this)
@@ -1814,7 +1823,6 @@ private operator fun <T> List<List<T>>.get(point: Point): T {
 
 @Suppress("DataClassPrivateConstructor")
 data class Point private constructor(val x: Int, val y: Int) {
-    val isBorder: Boolean = (x == 0) || (y == 0) || (x == 6) || (y == 6)
     val idx = y * 7 + x
     var up: Point? = null
     var down: Point? = null
