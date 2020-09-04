@@ -1691,9 +1691,17 @@ data class GameBoard(val bitBoard: BitBoard) {
     fun push(push: OnePush, player: Player): GameBoard {
         val rows = bitBoard.rows.clone()
         val hands = bitBoard.hands.clone()
+        pushImpl(push, player.playerId, rows, hands)
+        return GameBoard(BitBoard(rows, hands)).apply {
+            parent = this@GameBoard
+            pushesFromParent = null
+            pushFromParent = push
+        }
+    }
+
+    private fun pushImpl(push: OnePush, playerId: Int, rows: LongArray, hands: LongArray) {
         val direction = push.direction
         val rowColumn = push.rowColumn
-        val playerId = player.playerId
         if (direction == LEFT || direction == RIGHT) {
             if (direction == LEFT) {
                 BitBoard.pushLeft(rowColumn, rows, hands, playerId)
@@ -1706,11 +1714,6 @@ data class GameBoard(val bitBoard: BitBoard) {
             } else {
                 BitBoard.pushDown(rowColumn, rows, hands, playerId)
             }
-        }
-        return GameBoard(BitBoard(rows, hands)).apply {
-            parent = this@GameBoard
-            pushesFromParent = null
-            pushFromParent = push
         }
     }
 
@@ -1732,40 +1735,10 @@ data class GameBoard(val bitBoard: BitBoard) {
 
         val rows = bitBoard.rows.clone()
         val hands = bitBoard.hands.clone()
-        firstPush.run {
-            val isEnemy = firstPushIsEnemy
-            val playerId = if (isEnemy) 1 else 0
-            if (direction == LEFT || direction == RIGHT) {
-                if (direction == LEFT) {
-                    BitBoard.pushLeft(rowColumn, rows, hands, playerId)
-                } else {
-                    BitBoard.pushRight(rowColumn, rows, hands, playerId)
-                }
-            } else {
-                if (direction == UP) {
-                    BitBoard.pushUp(rowColumn, rows, hands, playerId)
-                } else {
-                    BitBoard.pushDown(rowColumn, rows, hands, playerId)
-                }
-            }
-        }
-        secondPush.run {
-            val isEnemy = !firstPushIsEnemy
-            val playerId = if (isEnemy) 1 else 0
-            if (direction == LEFT || direction == RIGHT) {
-                if (direction == LEFT) {
-                    BitBoard.pushLeft(rowColumn, rows, hands, playerId)
-                } else {
-                    BitBoard.pushRight(rowColumn, rows, hands, playerId)
-                }
-            } else {
-                if (direction == UP) {
-                    BitBoard.pushUp(rowColumn, rows, hands, playerId)
-                } else {
-                    BitBoard.pushDown(rowColumn, rows, hands, playerId)
-                }
-            }
-        }
+        val firstPlayerId = if (firstPushIsEnemy) 1 else 0
+        val secondPlayerId = if (firstPushIsEnemy) 0 else 1
+        pushImpl(firstPush, firstPlayerId, rows, hands)
+        pushImpl(secondPush, secondPlayerId, rows, hands)
 
         return GameBoard(BitBoard(rows, hands)).apply {
             parent = this@GameBoard
