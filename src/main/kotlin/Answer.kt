@@ -258,6 +258,24 @@ fun performGame() {
                 }
             }
 
+            if(gameBoard[we.point].containsQuestItem(we.playerId, ourQuests)) {
+                val nextQuestId = 12 - we.numPlayerCards + 3
+                if (globalQuestsInGameOrder.size > nextQuestId) {
+                    log("we standing at quest at $step turn and know next quest")
+                } else {
+                    log("we standing at quest at $step turn and don't know next quest")
+                }
+            }
+
+            if(gameBoard[enemy.point].containsQuestItem(enemy.playerId, enemyQuests)) {
+                val nextQuestId = 12 - enemy.numPlayerCards + 3
+                if (globalQuestsInGameOrder.size > nextQuestId) {
+                    log("enemy standing at quest at $step turn and know next quest")
+                } else {
+                    log("enemy standing at quest at $step turn and don't know next quest")
+                }
+            }
+
             if (turnType == 0) {
                 val duration = measureNanoTime {
                     val prevMovesAtThisPosition = allBoards[BoardAndElves(gameBoard, we.point, enemy.point)]
