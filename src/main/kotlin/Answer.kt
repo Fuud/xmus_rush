@@ -877,7 +877,7 @@ private fun findBestPush(
 
         val ourBestResponseOnEnemyResponse = pushes.maxBy {
             if (it.pushes.enemyPush != enemyBestResponse.pushes.enemyPush) {
-                -2.0 // bigger than any valid score
+                -2.0 // smaller than any valid score
             } else {
                 it.score
             }
@@ -888,51 +888,63 @@ private fun findBestPush(
                     "collision=${enemyBestResponse.pushes.collision()}"
         )
 
-        if (enemyBestResponse.pushes.collision()) {
-            log("as collision is the best enemy response, lets proceed")
-            ourBestPush
-        } else {
-            log("our best respond on enemy respond is ${ourBestResponseOnEnemyResponse.pushes.ourPush} with score=${ourBestResponseOnEnemyResponse.score};")
+        log("our best respond on enemy respond is ${ourBestResponseOnEnemyResponse.pushes.ourPush} with score=${ourBestResponseOnEnemyResponse.score};")
 
-            val ourMoves = arrayOf(ourBestPush, ourBestResponseOnEnemyResponse.pushes.ourPush)
-            val enemyMoves = arrayOf(enemyBestResponse.pushes.enemyPush, ourBestPush, ourBestPush.opposite)
-
-            for ((ourIdx, ourMove) in ourMoves.withIndex()) {
-                for ((enemyIdx, enemyMove) in enemyMoves.withIndex()) {
-                    a[enemyIdx][ourIdx] =
-                        pushes.single { it.pushes.ourPush == ourMove && it.pushes.enemyPush == enemyMove }.score
-                }
-            }
-
-            val solution = solvePivot(a, enemyMoves.size, ourMoves.size)
-
-            log(
-                "our reduced strategy: ${
-                    solution.ourStrategy.zip(ourMoves).sortedByDescending { it.first }
-                        .map { "${it.second}=${twoDigitsAfterDotFormat.format(it.first)}" }
-                }"
-            )
-            log(
-                "enemy reduced strategy: ${
-                    solution.enemyStrategy.zip(enemyMoves).sortedByDescending { it.first }
-                        .map { "${it.second}=${twoDigitsAfterDotFormat.format(it.first)}" }
-                }"
-            )
-
-            val (firstStrat, secondStrat) = solution.ourStrategy.zip(ourMoves).sortedByDescending { it.first }
-
-            if (secondStrat.first > firstStrat.first * 0.8) {
-                val selection = rand.nextDouble()
-
-                if (selection < firstStrat.first) {
-                    firstStrat.second
+        val enemyCollisionMoves = listOf(ourBestPush, ourBestPush.opposite)
+        val ourBestResponsesOnEnemyMoves = enemyCollisionMoves.map {enemyPush->
+            pushes.maxBy {
+                if (it.pushes.enemyPush != enemyPush) {
+                    -2.0 // smaller than any valid score
                 } else {
-                    secondStrat.second
+                    it.score
                 }
-            } else {
-                firstStrat.second
+            }!!
+        }
+
+        log("our best responses on enemy collision moves ($enemyCollisionMoves) is ${ourBestResponsesOnEnemyMoves.map { "${it.pushes.ourPush}=${it.score}" }}")
+
+        val ourMoves =
+            (listOf(ourBestPush, ourBestResponseOnEnemyResponse.pushes.ourPush) + ourBestResponsesOnEnemyMoves.map { it.pushes.ourPush })
+                .toSet().toList()
+        val enemyMoves = listOf(enemyBestResponse.pushes.enemyPush, ourBestPush, ourBestPush.opposite).toSet().toList()
+
+        for ((ourIdx, ourMove) in ourMoves.withIndex()) {
+            for ((enemyIdx, enemyMove) in enemyMoves.withIndex()) {
+                a[enemyIdx][ourIdx] =
+                    pushes.single { it.pushes.ourPush == ourMove && it.pushes.enemyPush == enemyMove }.score
             }
         }
+
+        val solution = solvePivot(a, enemyMoves.size, ourMoves.size)
+
+        log(
+            "our reduced strategy: ${
+                solution.ourStrategy.zip(ourMoves).sortedByDescending { it.first }
+                    .map { "${it.second}=${twoDigitsAfterDotFormat.format(it.first)}" }
+            }"
+        )
+        log(
+            "enemy reduced strategy: ${
+                solution.enemyStrategy.zip(enemyMoves).sortedByDescending { it.first }
+                    .map { "${it.second}=${twoDigitsAfterDotFormat.format(it.first)}" }
+            }"
+        )
+
+        val bestPushProb = solution.ourStrategy.max()!!
+        val sortedPushes =
+            solution.ourStrategy.zip(ourMoves).filter { it.first > 0.7 * bestPushProb }.sortedByDescending { it.first }
+
+        val selection = rand.nextDouble()
+        val norm = sortedPushes.sumByDouble { it.first }
+        var currentSum = 0.0
+        var selected: OnePush? = null
+        for (idx in sortedPushes.indices) {
+            currentSum += sortedPushes[idx].first
+            if (currentSum >= selection * norm) {
+                selected = sortedPushes[idx].second
+            }
+        }
+        selected!!
     } else {
 
         selectPivotSolver(we, enemy, pushes, step, numberOfDraws, prevPushesAtThisPosition)
