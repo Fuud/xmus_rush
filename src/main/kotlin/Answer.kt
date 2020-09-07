@@ -90,7 +90,8 @@ val nonDrawRepetitions = Array<RepetitionType>(150) { UNKNOWN }
 
 val drawRepetitionsStr: String
     get() {
-        return drawRepetitions.toList().subList(1, max(2, drawRepetitions.indexOfLast { it != UNKNOWN } + 1)).joinToString()
+        return drawRepetitions.toList().subList(1, max(2, drawRepetitions.indexOfLast { it != UNKNOWN } + 1))
+            .joinToString()
     }
 val nonDrawRepetitionsStr: String
     get() {
@@ -120,50 +121,50 @@ private fun initProbabilities(p: DoubleArray) {
     p22 /= sum
     val oe = doubleArrayOf(p00, p01, p02, p10, p11, p12, p20, p21, p22)
     for (o in (0 until 13)) {
-            for (e in (0 until 13)) {
-                if (o == e) {
-                    drawP[0][o][e] = 1.0
-                    estimate[0][o][e] = 0.5
-                } else if (e > o) {
-                    winP[0][o][e] = 1.0
-                    estimate[0][o][e] = 1.0
-                } else {
-                    loseP[0][o][e] = 1.0
-                }
+        for (e in (0 until 13)) {
+            if (o == e) {
+                drawP[0][o][e] = 1.0
+                estimate[0][o][e] = 0.5
+            } else if (e > o) {
+                winP[0][o][e] = 1.0
+                estimate[0][o][e] = 1.0
+            } else {
+                loseP[0][o][e] = 1.0
             }
         }
-        for (turn in (1 until 75)) {
-            for (o in (1 until 13)) {
-                loseP[turn][o][0] = 1.0
-            }
-            for (e in (1 until 13)) {
-                winP[turn][0][e] = 1.0
-                estimate[turn][0][e] = 1.0
-            }
-            drawP[turn][0][0] = 1.0
-            estimate[turn][0][0] = 0.5
+    }
+    for (turn in (1 until 75)) {
+        for (o in (1 until 13)) {
+            loseP[turn][o][0] = 1.0
         }
+        for (e in (1 until 13)) {
+            winP[turn][0][e] = 1.0
+            estimate[turn][0][e] = 1.0
+        }
+        drawP[turn][0][0] = 1.0
+        estimate[turn][0][0] = 0.5
+    }
 
-        for (turn in (1 until 75)) {
-            for (o in (1 until 13)) {
-                for (e in (1 until 13)) {
-                    for (oi in (0 until 3)) {
-                        for (ei in (0 until 3)) {
-                            val op = Math.max(o - oi, 0)
-                            val ep = Math.max(e - ei, 0)
-                            drawP[turn][o][e] += drawP[turn - 1][op][ep] * oe[oi + ei * 3]
-                            winP[turn][o][e] += winP[turn - 1][op][ep] * oe[oi + ei * 3]
-                            loseP[turn][o][e] += loseP[turn - 1][op][ep] * oe[oi + ei * 3]
-                        }
+    for (turn in (1 until 75)) {
+        for (o in (1 until 13)) {
+            for (e in (1 until 13)) {
+                for (oi in (0 until 3)) {
+                    for (ei in (0 until 3)) {
+                        val op = Math.max(o - oi, 0)
+                        val ep = Math.max(e - ei, 0)
+                        drawP[turn][o][e] += drawP[turn - 1][op][ep] * oe[oi + ei * 3]
+                        winP[turn][o][e] += winP[turn - 1][op][ep] * oe[oi + ei * 3]
+                        loseP[turn][o][e] += loseP[turn - 1][op][ep] * oe[oi + ei * 3]
                     }
-                    val sum = winP[turn][o][e] + drawP[turn][o][e] + loseP[turn][o][e]
-                    winP[turn][o][e] /= sum
-                    drawP[turn][o][e] /= sum
-                    loseP[turn][o][e] /= sum
-                    estimate[turn][o][e] = winP[turn][o][e] + drawP[turn][o][e] / 2
                 }
+                val sum = winP[turn][o][e] + drawP[turn][o][e] + loseP[turn][o][e]
+                winP[turn][o][e] /= sum
+                drawP[turn][o][e] /= sum
+                loseP[turn][o][e] /= sum
+                estimate[turn][o][e] = winP[turn][o][e] + drawP[turn][o][e] / 2
             }
         }
+    }
 }
 
 val twoDigitsAfterDotFormat = DecimalFormat().apply {
@@ -232,7 +233,7 @@ fun performGame() {
             log("step $step")
 
             val (turnType, gameBoard, ourQuests, enemyQuests, we, enemy) = readInput(input)
-            if (step ==0) {
+            if (step == 0) {
                 val fields: MutableList<BitField> = Point.points.flatten()
                     .map { p -> gameBoard.bitBoard[p] }
                     .toMutableList()
@@ -250,11 +251,29 @@ fun performGame() {
                 } else {
                     Fingerprint(hi.toByte(), vi.toByte(), h.toByte(), v.toByte())
                 }
-                if(fingerprints.containsKey(key)) {
+                if (fingerprints.containsKey(key)) {
                     initProbabilities(fingerprints.get(key)!!)
-                }else {
+                } else {
                     log("!unknown $key")
                     initProbabilities(defaultP)
+                }
+            }
+
+            if (gameBoard[we.point].containsQuestItem(we.playerId, ourQuests)) {
+                val nextQuestId = 12 - we.numPlayerCards + 3
+                if (globalQuestsInGameOrder.size > nextQuestId) {
+                    log("we standing at quest at $step turn and know next quest")
+                } else {
+                    log("we standing at quest at $step turn and don't know next quest")
+                }
+            }
+
+            if (gameBoard[enemy.point].containsQuestItem(enemy.playerId, enemyQuests)) {
+                val nextQuestId = 12 - enemy.numPlayerCards + 3
+                if (globalQuestsInGameOrder.size > nextQuestId) {
+                    log("enemy standing at quest at $step turn and know next quest")
+                } else {
+                    log("enemy standing at quest at $step turn and don't know next quest")
                 }
             }
 
@@ -289,7 +308,7 @@ fun performGame() {
                 val bestMove = lastPush!!
                 println("PUSH ${bestMove.rowColumn} ${bestMove.direction}")
             } else {
-                var output:String? = null
+                var output: String? = null
                 val duration = measureNanoTime {
                     processPreviousPush(gameBoard, we, enemy, allBoards)
                     val bestPath = findBestMove(
@@ -413,7 +432,7 @@ private fun findBestMove(
     }
     val nextEnemy = enemy.copy(numPlayerCards = enemyNextNumCards)
     for (pushes in Pushes.allPushes) {
-        if (System.nanoTime() - startTime > timeLimit*2 && count > 0) {
+        if (System.nanoTime() - startTime > timeLimit * 2 && count > 0) {
             log("stop computePushes, computed $count pushes")
             break
         }
@@ -909,6 +928,7 @@ private fun selectPivotSolver(
     var threshold = 0.0000001
     fun r(value: Double): Double =
         if (value > -threshold && value < threshold) 0.0 else value
+
     val ourPushes = pushes.groupBy { it.pushes.ourPush }.keys.toList()
     val OUR_SIZE = ourPushes.size
     val enemyPushes = pushes.groupBy { it.pushes.enemyPush }.keys.toList()
@@ -1297,6 +1317,9 @@ data class DomainInfo(
     val ourItemsBits: Int,
     val enemyItemsBits: Int,
     val domainBits: Long,
+    val twoPathsTileCount: Int,
+    val threePathsTileCount: Int,
+    val fourPathsTileCount: Int,
     val maxX: Int,
     val minX: Int,
     val maxY: Int,
@@ -1305,6 +1328,7 @@ data class DomainInfo(
 
     val size: Int = java.lang.Long.bitCount(domainBits)
     val hasAccessToBorder = domainBits.and(BORDER) != 0L
+    val tilePathsCount = twoPathsTileCount+threePathsTileCount+fourPathsTileCount
 
     companion object {
         val UP_BORDER: Long =
@@ -1373,7 +1397,7 @@ class Domains {
         domains.add(domain)
     }
 
-    fun count(): Int{
+    fun count(): Int {
         return domains.size
     }
 }
@@ -1579,6 +1603,9 @@ data class GameBoard(val bitBoard: BitBoard) {
         var maxY = 0
         var minX = 7
         var minY = 7
+        var twoPathsTileCount = 0
+        var threePathsTileCount = 0
+        var fourPathsTileCount = 0
         while (true) {
             val nextPoint = readNextFront() ?: break
             maxX = max(maxX, nextPoint.x)
@@ -1586,6 +1613,13 @@ data class GameBoard(val bitBoard: BitBoard) {
             maxY = max(maxY, nextPoint.y)
             minY = min(minY, nextPoint.y)
             val bitField = bitBoard[nextPoint]
+
+            when (Integer.bitCount(bitField.tile)) {
+                2 -> twoPathsTileCount++
+                3 -> threePathsTileCount++
+                4 -> fourPathsTileCount++
+            }
+
             val item = bitField.item
             if (item > 0) {
                 if (ourQuestsSet[item]) {
@@ -1617,6 +1651,9 @@ data class GameBoard(val bitBoard: BitBoard) {
             ourItemsBits = ourItems,
             enemyItemsBits = enemyItems,
             domainBits = visitedPoints,
+            twoPathsTileCount = twoPathsTileCount,
+            threePathsTileCount = threePathsTileCount,
+            fourPathsTileCount = fourPathsTileCount,
             maxX = maxX,
             maxY = maxY,
             minX = minX,
@@ -1827,10 +1864,10 @@ data class GameBoard(val bitBoard: BitBoard) {
         val ourDomain = findDomain(ourPlayer.point, ourQuests, enemyQuests)
         val enemyDomain = findDomain(enemyPlayer.point, ourQuests, enemyQuests)
 
-        val spaceScore = ourDomain.size - enemyDomain.size
+        val spaceScore = ourDomain.tilePathsCount - enemyDomain.tilePathsCount
         val ourHandScore = PushSelectors.itemOnHandScore(ourPlayer, ourDomain, ourFieldOnHand, ourQuests)
         val enemyHandScore = PushSelectors.itemOnHandScore(enemyPlayer, enemyDomain, enemyFieldOnHand, enemyQuests)
-        val secondaryScore = (spaceScore + (ourHandScore - enemyHandScore) * 25.0) / (50 + 25)
+        val secondaryScore = (spaceScore + (ourHandScore - enemyHandScore) * 25.0) / (150 + 25)
         val gameEstimate = if (collision) {
             if (numberOfDraws == 0) {
                 computeEstimate(ourItemRemain, enemyItemRemain, Math.max(pushesRemain - 1, 0), secondaryScore)
@@ -1997,7 +2034,7 @@ data class Player(
     val point: Point = Point.point(playerX, playerY)
 
     fun push(pushes: Pushes): Player {
-        if (pushes.collision()){
+        if (pushes.collision()) {
             return this
         }
         var x = playerX
