@@ -714,7 +714,7 @@ fun readInput(input: Scanner): InputConditions {
         if (globalQuestsInGameOrder.size > nextQuestId) {
             val nextQuest = globalQuestsInGameOrder[nextQuestId]
             val quest = abs(ourBoardField.item)
-            log("we standing at quest ${Items.items[quest]} at $ttn turn and know next quest ${Items.items[nextQuest]}")
+            log("we standing at quest ${Items.items[quest-1]} at $ttn turn and know next quest ${Items.items[nextQuest]}")
             we = we.copy(numPlayerCards = we.numPlayerCards -1)
             ourQuestsSet = ourQuestsSet.flip(quest)
             ourQuestsSet = ourQuestsSet.set(nextQuest)
@@ -729,7 +729,7 @@ fun readInput(input: Scanner): InputConditions {
         if (globalQuestsInGameOrder.size > nextQuestId) {
             val nextQuest = globalQuestsInGameOrder[nextQuestId]
             val quest = abs(enemyBoardField.item)
-            log("enemy standing at quest ${Items.items[quest]} at $ttn turn and know next quest ${Items.items[nextQuest]}")
+            log("enemy standing at quest ${Items.items[quest-1]} at $ttn turn and know next quest ${Items.items[nextQuest]}")
             enemy = enemy.copy(numPlayerCards = enemy.numPlayerCards -1)
             enemyQuestsSet = enemyQuestsSet.flip(quest)
             enemyQuestsSet = enemyQuestsSet.set(nextQuest)
