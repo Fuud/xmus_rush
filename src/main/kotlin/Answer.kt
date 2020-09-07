@@ -258,24 +258,6 @@ fun performGame() {
                 }
             }
 
-            if(gameBoard[we.point].containsQuestItem(we.playerId, ourQuests)) {
-                val nextQuestId = 12 - we.numPlayerCards + 3
-                if (globalQuestsInGameOrder.size > nextQuestId) {
-                    log("we standing at quest at $step turn and know next quest")
-                } else {
-                    log("we standing at quest at $step turn and don't know next quest")
-                }
-            }
-
-            if(gameBoard[enemy.point].containsQuestItem(enemy.playerId, enemyQuests)) {
-                val nextQuestId = 12 - enemy.numPlayerCards + 3
-                if (globalQuestsInGameOrder.size > nextQuestId) {
-                    log("enemy standing at quest at $step turn and know next quest")
-                } else {
-                    log("enemy standing at quest at $step turn and don't know next quest")
-                }
-            }
-
             if (turnType == 0) {
                 val duration = measureNanoTime {
                     val prevMovesAtThisPosition = allBoards[BoardAndElves(gameBoard, we.point, enemy.point)]
@@ -638,10 +620,10 @@ fun readInput(input: Scanner): InputConditions {
     val turnType = input.nextInt() // 0 - push, 1 - move
     val board = BoardDto(input)
 
-    val we = Player(0, input)
+    var we = Player(0, input)
     val ourTile = Tile.read(input)
 
-    val enemy = Player(1, input)
+    var enemy = Player(1, input)
     val enemyTile = Tile.read(input)
 
     val items = (0 until input.nextInt()).map { ItemDto(input) }
@@ -704,6 +686,37 @@ fun readInput(input: Scanner): InputConditions {
     var enemyQuestsSet = 0
     enemyQuests.forEach {
         enemyQuestsSet = enemyQuestsSet.set(Items.index(it))
+    }
+
+    val ttn = if(turnType ==0) "PUSH" else "MOVE"
+    val ourBoardField = gameBoard[we.point]
+    if(ourBoardField.containsQuestItem(we.playerId, ourQuestsSet)) {
+        val nextQuestId = 12 - we.numPlayerCards + 3
+        if (globalQuestsInGameOrder.size > nextQuestId) {
+            val nextQuest = globalQuestsInGameOrder[nextQuestId]
+            val quest = abs(ourBoardField.item)
+            log("we standing at quest ${Items.items[quest]} at $ttn turn and know next quest ${Items.items[nextQuest]}")
+            we = we.copy(numPlayerCards = we.numPlayerCards -1)
+            ourQuestsSet = ourQuestsSet.flip(quest)
+            ourQuestsSet = ourQuestsSet.set(nextQuest)
+        } else {
+            log("we standing at quest at $ttn turn and don't know next quest")
+        }
+    }
+
+    val enemyBoardField = gameBoard[enemy.point]
+    if(enemyBoardField.containsQuestItem(enemy.playerId, enemyQuestsSet)) {
+        val nextQuestId = 12 - enemy.numPlayerCards + 3
+        if (globalQuestsInGameOrder.size > nextQuestId) {
+            val nextQuest = globalQuestsInGameOrder[nextQuestId]
+            val quest = abs(enemyBoardField.item)
+            log("enemy standing at quest ${Items.items[quest]} at $ttn turn and know next quest ${Items.items[nextQuest]}")
+            enemy = enemy.copy(numPlayerCards = enemy.numPlayerCards -1)
+            enemyQuestsSet = enemyQuestsSet.flip(quest)
+            enemyQuestsSet = enemyQuestsSet.set(nextQuest)
+        } else {
+            log("enemy standing at quest at $ttn turn and don't know next quest")
+        }
     }
 
     return InputConditions(turnType, gameBoard, ourQuestsSet, enemyQuestsSet, we, enemy)
@@ -1262,6 +1275,10 @@ private operator fun Int.get(index: Int): Boolean {
 
 fun Int.set(index: Int): Int {
     return this or (1.shl(index))
+}
+
+fun Int.flip(index: Int): Int {
+    return this xor (1.shl(index))
 }
 
 private operator fun Long.get(index: Int): Boolean {
