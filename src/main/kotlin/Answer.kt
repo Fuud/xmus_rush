@@ -696,12 +696,12 @@ fun readInput(input: Scanner): InputConditions {
         val quest = abs(ourBoardField.item)
         if (globalQuestsInGameOrder.size > nextQuestId) {
             val nextQuest = globalQuestsInGameOrder[nextQuestId]
-            log("we standing at ${Items.items[quest-1]} at $ttn turn and know next quest ${Items.items[nextQuest]}")
+            log("we standing at ${Items.name(quest)} at $ttn turn and know next quest ${Items.name(nextQuest)}")
             we = we.copy(numPlayerCards = we.numPlayerCards -1)
             ourQuestsSet = ourQuestsSet.flip(quest)
             ourQuestsSet = ourQuestsSet.set(nextQuest)
         } else {
-            log("we standing at ${Items.items[quest-1]} at $ttn turn and don't know next quest")
+            log("we standing at ${Items.name(quest)} at $ttn turn and don't know next quest")
         }
     }
 
@@ -711,12 +711,12 @@ fun readInput(input: Scanner): InputConditions {
         val quest = abs(enemyBoardField.item)
         if (globalQuestsInGameOrder.size > nextQuestId) {
             val nextQuest = globalQuestsInGameOrder[nextQuestId]
-            log("enemy standing at ${Items.items[quest-1]} at $ttn turn and know next quest ${Items.items[nextQuest]}")
+            log("enemy standing at ${Items.name(quest)} at $ttn turn and know next quest ${Items.name(nextQuest)}")
             enemy = enemy.copy(numPlayerCards = enemy.numPlayerCards -1)
             enemyQuestsSet = enemyQuestsSet.flip(quest)
             enemyQuestsSet = enemyQuestsSet.set(nextQuest)
         } else {
-            log("enemy standing at ${Items.items[quest-1]} at $ttn turn and don't know next quest")
+            log("enemy standing at ${Items.name(quest)} at $ttn turn and don't know next quest")
         }
     }
 
@@ -864,7 +864,7 @@ private fun findBestPush(
     )
     probablyLogCompilation()
     val filteredPushes = filterOutPushes(pushes, prevPushesAtThisPosition, numberOfDraws, we, enemy, step)
-    val result = selectPivotSolver(filteredPushes)
+    val result = selectPivotSolver(filteredPushes, ourQuests, enemyQuests)
     probablyLogCompilation()
     return result
 }
@@ -906,7 +906,9 @@ val stringBuilder = StringBuilder(10_000)
 
 //pivot method from https://www.math.ucla.edu/~tom/Game_Theory/mat.pdf
 private fun selectPivotSolver(
-    pushes: List<PushAndMove>
+    pushes: List<PushAndMove>,
+    ourQuests: Int,
+    enemyQuests: Int
 ): OnePush {
 
     var threshold = 0.0000001
@@ -2332,6 +2334,8 @@ object Items {
     )
 
     fun index(name: String) = items.indexOf(name) + 1
+
+    fun name(index: Int) = items[index - 1]
 
     fun indexesToNames(set: Int): List<String> {
         val result = mutableListOf<String>()
