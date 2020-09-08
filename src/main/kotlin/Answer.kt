@@ -720,6 +720,8 @@ fun readInput(input: Scanner): InputConditions {
         }
     }
 
+    log("board score = ${gameBoard.score(we, ourQuestsSet, we.numPlayerCards, enemy, enemyQuestsSet, enemy.numPlayerCards, false)}")
+
     return InputConditions(turnType, gameBoard, ourQuestsSet, enemyQuestsSet, we, enemy)
 }
 
