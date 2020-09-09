@@ -334,10 +334,8 @@ fun performGame() {
     }
 }
 
-val globalQuestsInGameOrder = mutableListOf<Int>()
-
 object Quests {
-    //    val globalQuestsInGameOrder = mutableListOf<Int>()
+    val globalQuestsInGameOrder = mutableListOf<Int>()
     val ourQuestsInGameOrder = mutableListOf<Int>()
     val enemyQuestsInGameOrder = mutableListOf<Int>()
     private var ourIdx = 0
@@ -352,51 +350,54 @@ object Quests {
     }
 
     fun updateQuests(ourQuests: List<String>, enemyQuests: List<String>) {
-        if (globalQuestsInGameOrder.size < 12) {
-            ourQuests.forEachIndexed {index, it ->
-                val item = Items.index(it)
+        val updateGlobal = globalQuestsInGameOrder.size < 12
+        ourQuests.forEachIndexed { index, it ->
+            val item = Items.index(it)
+            if (updateGlobal) {
                 if (!globalQuestsInGameOrder.contains(item)) {
                     globalQuestsInGameOrder.add(item)
                     enemyQuestsInGameOrder.add(item)
                     ourQuestsInGameOrder.add(item)
                 }
-
-                while (ourQuestsInGameOrder[ourIdx + index] != item) {
-                    if (index != 0) {
-                        val q = ourQuestsInGameOrder[ourIdx + index]
-                        ourQuestsInGameOrder.removeAt(ourIdx + index)
-                        ourQuestsInGameOrder.add(ourIdx, q)
-                    }
-                    ourIdx++
-                }
             }
 
-            enemyQuests.forEachIndexed { index, it ->
-                val item = Items.index(it)
+            while (ourQuestsInGameOrder[ourIdx + index] != item) {
+                if (index != 0) {
+                    val q = ourQuestsInGameOrder[ourIdx + index]
+                    ourQuestsInGameOrder.removeAt(ourIdx + index)
+                    ourQuestsInGameOrder.add(ourIdx, q)
+                }
+                ourIdx++
+            }
+        }
+
+        enemyQuests.forEachIndexed { index, it ->
+            val item = Items.index(it)
+            if (updateGlobal) {
                 if (!globalQuestsInGameOrder.contains(item)) {
                     globalQuestsInGameOrder.add(item)
                     enemyQuestsInGameOrder.add(item)
                     ourQuestsInGameOrder.add(item)
                 }
-
-                while (enemyQuestsInGameOrder[enemyIdx + index] != item) {
-                    if (index != 0) {
-                        val q = enemyQuestsInGameOrder[enemyIdx + index]
-                        enemyQuestsInGameOrder.removeAt(enemyIdx + index)
-                        enemyQuestsInGameOrder.add(enemyIdx, q)
-                    }
-                    enemyIdx++
-                }
             }
 
-            if (globalQuestsInGameOrder.size == 11) {
-                for (item in Items.items) {
-                    val idx = Items.index(item)
-                    if (!globalQuestsInGameOrder.contains(idx)) {
-                        globalQuestsInGameOrder.add(idx)
-                        enemyQuestsInGameOrder.add(idx)
-                        ourQuestsInGameOrder.add(idx)
-                    }
+            while (enemyQuestsInGameOrder[enemyIdx + index] != item) {
+                if (index != 0) {
+                    val q = enemyQuestsInGameOrder[enemyIdx + index]
+                    enemyQuestsInGameOrder.removeAt(enemyIdx + index)
+                    enemyQuestsInGameOrder.add(enemyIdx, q)
+                }
+                enemyIdx++
+            }
+        }
+
+        if (globalQuestsInGameOrder.size == 11) {
+            for (item in Items.items) {
+                val idx = Items.index(item)
+                if (!globalQuestsInGameOrder.contains(idx)) {
+                    globalQuestsInGameOrder.add(idx)
+                    enemyQuestsInGameOrder.add(idx)
+                    ourQuestsInGameOrder.add(idx)
                 }
             }
         }
@@ -433,6 +434,24 @@ object Quests {
         return enemyQuests
     }
 
+    fun takeOur(quest: Int): Int {
+        if (quest != Items.NO_ITEM) {
+            ourQuestsInGameOrder.remove(quest)
+            ourQuestsInGameOrder.add(ourIdx, quest)
+            ourIdx++
+        }
+        return getOurNextQuests(0)
+    }
+
+    fun takeEnemy(quest: Int): Int {
+        if (quest != Items.NO_ITEM) {
+            enemyQuestsInGameOrder.remove(quest)
+            enemyQuestsInGameOrder.add(enemyIdx, quest)
+            enemyIdx++
+        }
+        return getEnemyNextQuests(0)
+    }
+
     fun size() = globalQuestsInGameOrder.size
 }
 
@@ -451,22 +470,7 @@ private fun findBestMove(
     val ourItemsTakenSize = Integer.bitCount(ourItemsTaken)
     var ourNextQuests = ourQuests.and(ourItemsTaken.inv())
     if (ourItemsTakenSize > 0 && we.numPlayerCards > 3) {
-        val nextQuestId = 12 - we.numPlayerCards + 3
-        if (globalQuestsInGameOrder.size > nextQuestId) {
-            ourNextQuests = ourNextQuests.set(globalQuestsInGameOrder[nextQuestId])
-
-            if (ourItemsTakenSize > 1 && we.numPlayerCards > 4 && globalQuestsInGameOrder.size > nextQuestId + 1) {
-                ourNextQuests = ourNextQuests.set(globalQuestsInGameOrder[nextQuestId + 1])
-
-                if (ourItemsTakenSize > 2 && we.numPlayerCards > 5 && globalQuestsInGameOrder.size > nextQuestId + 2) {
-                    ourNextQuests = ourNextQuests.set(globalQuestsInGameOrder[nextQuestId + 2])
-                }
-            }
-        }
-        val ourNextQuests1 = Quests.getOurNextQuests(ourItemsTaken)
-        if (ourNextQuests != ourNextQuests1) {
-            log("!! quest difference ")
-        }
+        ourNextQuests = Quests.getOurNextQuests(ourItemsTaken)
     }
     val ourNextNumCards = we.numPlayerCards - ourItemsTakenSize
 
@@ -475,22 +479,7 @@ private fun findBestMove(
     val enemyItemsTakenSize = Integer.bitCount(enemyItemsTaken)
     var enemyNextQuests = enemyQuests.and(enemyItemsTaken.inv())
     if (enemyItemsTakenSize > 0 && enemy.numPlayerCards > 3) {
-        val nextQuestId = 12 - enemy.numPlayerCards + 3
-        if (globalQuestsInGameOrder.size > nextQuestId) {
-            enemyNextQuests = enemyNextQuests.set(globalQuestsInGameOrder[nextQuestId])
-
-            if (enemyItemsTakenSize > 1 && enemy.numPlayerCards > 4 && globalQuestsInGameOrder.size > nextQuestId + 1) {
-                enemyNextQuests = enemyNextQuests.set(globalQuestsInGameOrder[nextQuestId + 1])
-
-                if (enemyItemsTakenSize > 2 && enemy.numPlayerCards > 5 && globalQuestsInGameOrder.size > nextQuestId + 2) {
-                    enemyNextQuests = enemyNextQuests.set(globalQuestsInGameOrder[nextQuestId + 2])
-                }
-            }
-            val enemyNextQuests1 = Quests.getEnemyNextQuests(enemyItemsTaken)
-            if (enemyNextQuests != enemyNextQuests1) {
-                log("!! quest difference ")
-            }
-        }
+        enemyNextQuests = Quests.getEnemyNextQuests(enemyItemsTaken)
     }
     val enemyNextNumCards = enemy.numPlayerCards - enemyItemsTakenSize
 
@@ -734,7 +723,7 @@ fun readInput(input: Scanner): InputConditions {
     val enemyTile = Tile.read(input)
 
     val items = (0 until input.nextInt()).map { ItemDto(input) }
-    val quests = (0 until input.nextInt()).map { Quest(input) }
+    val quests = (0 until input.nextInt()).map { QuestDto(input) }
 
 
     val ourField = Field(ourTile,
@@ -778,26 +767,33 @@ fun readInput(input: Scanner): InputConditions {
         val nextQuestId = 12 - we.numPlayerCards + 3
         val quest = abs(ourBoardField.item)
         if (Quests.size() > nextQuestId) {
-            val nextQuest = globalQuestsInGameOrder[nextQuestId]
+            val nextQuest = Quests.globalQuestsInGameOrder[nextQuestId]
             log("we standing at ${Items.name(quest)} at $ttn turn and know next quest ${Items.name(nextQuest)}")
             we = we.copy(numPlayerCards = we.numPlayerCards - 1)
             ourQuestsSet = ourQuestsSet.flip(quest)
             ourQuestsSet = ourQuestsSet.set(nextQuest)
+            if (Quests.getOurNextQuests(1.shl(quest)) != ourQuestsSet) {
+                log("!! quest diff")
+            }
         } else {
             log("we standing at ${Items.name(quest)} at $ttn turn and don't know next quest")
         }
     }
+
 
     val enemyBoardField = gameBoard[enemy.point]
     if(enemyBoardField.containsQuestItem(enemy.playerId, enemyQuestsSet)) {
         val nextQuestId = 12 - enemy.numPlayerCards + 3
         val quest = abs(enemyBoardField.item)
         if (Quests.size() > nextQuestId) {
-            val nextQuest = globalQuestsInGameOrder[nextQuestId]
+            val nextQuest = Quests.globalQuestsInGameOrder[nextQuestId]
             log("enemy standing at ${Items.name(quest)} at $ttn turn and know next quest ${Items.name(nextQuest)}")
             enemy = enemy.copy(numPlayerCards = enemy.numPlayerCards - 1)
             enemyQuestsSet = enemyQuestsSet.flip(quest)
             enemyQuestsSet = enemyQuestsSet.set(nextQuest)
+            if (Quests.getEnemyNextQuests(1.shl(quest)) != enemyQuestsSet) {
+                log("!! quest diff")
+            }            
         } else {
             log("enemy standing at ${Items.name(quest)} at $ttn turn and don't know next quest")
         }
@@ -1014,7 +1010,7 @@ private fun selectPivotSolver(
         return ourPushes[0]
     }
 
-    if (false) {
+    if (true) {
         stringBuilder.clear()
 
         stringBuilder.append("\n#our\\enemy | ")
@@ -2167,7 +2163,7 @@ data class ItemDto(val itemName: String, val itemX: Int, val itemY: Int, val ite
         (Items.index(itemName)) * (if (itemPlayerId == 0) 1 else -1)
 }
 
-class Quest(input: Scanner) {
+class QuestDto(input: Scanner) {
     val questItemName: String = input.next()
     val questPlayerId = input.nextInt()
 }
