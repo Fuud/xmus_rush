@@ -764,39 +764,20 @@ fun readInput(input: Scanner): InputConditions {
     val ttn = if(turnType ==0) "PUSH" else "MOVE"
     val ourBoardField = gameBoard[we.point]
     if(ourBoardField.containsQuestItem(we.playerId, ourQuestsSet)) {
-        val nextQuestId = 12 - we.numPlayerCards + 3
         val quest = abs(ourBoardField.item)
-        if (Quests.size() > nextQuestId) {
-            val nextQuest = Quests.globalQuestsInGameOrder[nextQuestId]
-            log("we standing at ${Items.name(quest)} at $ttn turn and know next quest ${Items.name(nextQuest)}")
-            we = we.copy(numPlayerCards = we.numPlayerCards - 1)
-            ourQuestsSet = ourQuestsSet.flip(quest)
-            ourQuestsSet = ourQuestsSet.set(nextQuest)
-            if (Quests.getOurNextQuests(1.shl(quest)) != ourQuestsSet) {
-                log("!! quest diff")
-            }
-        } else {
-            log("we standing at ${Items.name(quest)} at $ttn turn and don't know next quest")
-        }
+        val ourNextQuests = Quests.getOurNextQuests(1.shl(quest))
+        log("we standing at ${Items.name(quest)} at $ttn turn. change ourQuestsSet from $ourQuestsSet to $ourNextQuests")
+        ourQuestsSet = ourNextQuests
+        we = we.copy(numPlayerCards = we.numPlayerCards - 1)
     }
-
 
     val enemyBoardField = gameBoard[enemy.point]
     if(enemyBoardField.containsQuestItem(enemy.playerId, enemyQuestsSet)) {
-        val nextQuestId = 12 - enemy.numPlayerCards + 3
         val quest = abs(enemyBoardField.item)
-        if (Quests.size() > nextQuestId) {
-            val nextQuest = Quests.globalQuestsInGameOrder[nextQuestId]
-            log("enemy standing at ${Items.name(quest)} at $ttn turn and know next quest ${Items.name(nextQuest)}")
-            enemy = enemy.copy(numPlayerCards = enemy.numPlayerCards - 1)
-            enemyQuestsSet = enemyQuestsSet.flip(quest)
-            enemyQuestsSet = enemyQuestsSet.set(nextQuest)
-            if (Quests.getEnemyNextQuests(1.shl(quest)) != enemyQuestsSet) {
-                log("!! quest diff")
-            }            
-        } else {
-            log("enemy standing at ${Items.name(quest)} at $ttn turn and don't know next quest")
-        }
+        val enemyNextQuests = Quests.getEnemyNextQuests(1.shl(quest))
+        log("enemy standing at ${Items.name(quest)} at $ttn turn. change enemyQuestsSet from $enemyQuestsSet to $enemyNextQuests")
+        enemyQuestsSet = enemyNextQuests
+        enemy = enemy.copy(numPlayerCards = enemy.numPlayerCards - 1)
     }
 
     log("board score = ${gameBoard.score(we, ourQuestsSet, we.numPlayerCards, enemy, enemyQuestsSet, enemy.numPlayerCards, false)}")
