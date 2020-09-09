@@ -292,7 +292,7 @@ fun performGame() {
             } else {
                 var output: String? = null
                 val duration = measureNanoTime {
-                    processPreviousPush(gameBoard, we, enemy, allBoards)
+                    processPreviousPush(gameBoard, we, ourQuests, enemy, enemyQuests, allBoards)
                     val bestPath = findBestMove(
                         gameBoard,
                         we,
@@ -578,7 +578,9 @@ private fun findBestMove(
 private fun processPreviousPush(
     gameBoard: GameBoard,
     we: Player,
+    ourQuests: Int,
     enemy: Player,
+    enemyQuests: Int,
     allBoards: MutableMap<BoardAndElves, MutableList<Pushes>>
 ) {
     val lastPush = lastPush!!
@@ -688,8 +690,19 @@ private fun processPreviousPush(
             }
         }
 
-        allBoards.computeIfAbsent(lastBoardAndElves) { _ -> mutableListOf() }
-            .add(Pushes(lastPush, lastPush))
+        val score = gameBoard.push(lastPush, enemy)
+            .score(we.push(lastPush), ourQuests, we.numPlayerCards, enemy.push(lastPush), enemyQuests, enemy.numPlayerCards, false)
+        val oppositeScore = gameBoard.push(lastPush.opposite, enemy)
+            .score(we.push(lastPush.opposite), ourQuests, we.numPlayerCards, enemy.push(lastPush.opposite), enemyQuests, enemy.numPlayerCards, false)
+        if (score < oppositeScore) {
+            log("! $score < $oppositeScore deduct enemy $lastPush")
+            allBoards.computeIfAbsent(lastBoardAndElves) { _ -> mutableListOf() }
+                .add(Pushes(lastPush, lastPush))
+        } else {
+            log("! $score >= $oppositeScore deduct enemy ${lastPush.opposite}")
+            allBoards.computeIfAbsent(lastBoardAndElves) { _ -> mutableListOf() }
+                .add(Pushes(lastPush, lastPush.opposite))
+        }
     }
 }
 
@@ -765,7 +778,7 @@ fun readInput(input: Scanner): InputConditions {
     val ourBoardField = gameBoard[we.point]
     if(ourBoardField.containsQuestItem(we.playerId, ourQuestsSet)) {
         val quest = abs(ourBoardField.item)
-        val ourNextQuests = Quests.getOurNextQuests(1.shl(quest))
+        val ourNextQuests = Quests.takeOur(quest)
         log("we standing at ${Items.name(quest)} at $ttn turn. change ourQuestsSet from $ourQuestsSet to $ourNextQuests")
         ourQuestsSet = ourNextQuests
         we = we.copy(numPlayerCards = we.numPlayerCards - 1)
@@ -774,7 +787,7 @@ fun readInput(input: Scanner): InputConditions {
     val enemyBoardField = gameBoard[enemy.point]
     if(enemyBoardField.containsQuestItem(enemy.playerId, enemyQuestsSet)) {
         val quest = abs(enemyBoardField.item)
-        val enemyNextQuests = Quests.getEnemyNextQuests(1.shl(quest))
+        val enemyNextQuests = Quests.takeEnemy(quest)
         log("enemy standing at ${Items.name(quest)} at $ttn turn. change enemyQuestsSet from $enemyQuestsSet to $enemyNextQuests")
         enemyQuestsSet = enemyNextQuests
         enemy = enemy.copy(numPlayerCards = enemy.numPlayerCards - 1)
@@ -1130,16 +1143,16 @@ private fun selectPivotSolver(
 
     log(
         "OurStrategy: ${
-            ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
-                .sortedByDescending { it.second }
-                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+        ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
+            .sortedByDescending { it.second }
+            .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
         }"
     )
     log(
         "EnemyStrategy: ${
-            enemyStrategy.mapIndexed { idx, score -> enemyPushes[idx] to score }
-                .sortedByDescending { it.second }
-                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+        enemyStrategy.mapIndexed { idx, score -> enemyPushes[idx] to score }
+            .sortedByDescending { it.second }
+            .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
         }"
     )
 
@@ -1161,7 +1174,6 @@ private fun selectPivotSolver(
     }
 
     throw IllegalStateException("aaaaa")
-
 }
 
 private fun filterOutPushes(
@@ -1177,11 +1189,11 @@ private fun filterOutPushes(
     log("filter pushes: enemy nonDraw repetitions: $nonDrawRepetitionsStr")
 
     val prevEnemyPushes = prevPushesAtThisPosition?.flatMap {
-        if (it.collision()) {
-            listOf(it.enemyPush, it.enemyPush.opposite)
-        } else {
-            listOf(it.enemyPush)
-        }
+//        if (it.collision()) {
+//            listOf(it.enemyPush, it.enemyPush.opposite)
+//        } else {
+        listOf(it.enemyPush)
+//        }
     }
     val prevOurPushes = prevPushesAtThisPosition?.map { it.ourPush }
 
@@ -1218,12 +1230,12 @@ private fun filterOutPushes(
             NOT_PREVIOUS_MOVE -> pushes.filterNot {
                 val lastEnemyPush = prevEnemyPushes.last()
                 it.pushes.enemyPush == lastEnemyPush
-                        || (isDraw && it.pushes.enemyPush == lastEnemyPush.opposite)
+                // || (isDraw && it.pushes.enemyPush == lastEnemyPush.opposite)
             }
             SAME_MOVE -> pushes.filter {
                 val lastEnemyPush = prevEnemyPushes.last()
                 it.pushes.enemyPush == lastEnemyPush
-                        || (isDraw && it.pushes.enemyPush == lastEnemyPush.opposite)
+                        //   || (isDraw && it.pushes.enemyPush == lastEnemyPush.opposite)
                         || (excludeOur && it.pushes.ourPush != prevOurPushes.last())
             }
             else -> pushes
@@ -2080,6 +2092,27 @@ data class Player(
 
     val point: Point = Point.point(playerX, playerY)
 
+    fun push(push:OnePush) :Player{
+        var x = playerX
+        var y = playerY
+        push.run {
+            if (direction.isVertical) {
+                if (x == rowColumn) {
+                    y = (y + (if (direction == UP) -1 else 1) + 7) % 7
+                }
+            } else {
+                if (y == rowColumn) {
+                    x = (x + (if (direction == LEFT) -1 else 1) + 7) % 7
+                }
+            }
+        }
+        return if (x != playerX || y != playerY) {
+            copy(playerX = x, playerY = y)
+        } else {
+            this
+        }
+    }
+
     fun push(pushes: Pushes): Player {
         if (pushes.collision()) {
             return this
@@ -2251,7 +2284,14 @@ object Warmup {
         lastBoard = toPush.gameBoard
         lastBoardAndElves = BoardAndElves(toPush.gameBoard, toPush.we.point, toPush.enemy.point)
         log("warmup once move")
-        processPreviousPush(toMove.gameBoard, toMove.we, toMove.enemy, mutableMapOf())
+        processPreviousPush(
+            toMove.gameBoard,
+            toMove.we,
+            toMove.ourQuests,
+            toMove.enemy,
+            toMove.enemyQuests,
+            mutableMapOf()
+        )
         findBestMove(
             gameBoard = toMove.gameBoard,
             we = toMove.we,
@@ -2261,37 +2301,6 @@ object Warmup {
             enemyQuests = toMove.enemyQuests
         )
     }
-
-    fun warmup(limitNanos: Long) {
-        val start = System.nanoTime()
-
-        while (true) {
-            if (System.nanoTime() > start + limitNanos) {
-                break
-            }
-            findBestPush(
-                toPush.we,
-                toPush.enemy,
-                toPush.gameBoard,
-                toPush.ourQuests,
-                toPush.enemyQuests,
-                step = 2 // small limit
-            )
-            if (System.nanoTime() > start + limitNanos) {
-                break
-            }
-            processPreviousPush(toMove.gameBoard, toMove.we, toMove.enemy, mutableMapOf())
-            findBestMove(
-                gameBoard = toMove.gameBoard,
-                we = toMove.we,
-                ourQuests = toMove.ourQuests,
-                step = 1,
-                enemy = toMove.enemy,
-                enemyQuests = toMove.enemyQuests
-            )
-        }
-    }
-
 
     private val warmupMove = """
 1
