@@ -693,7 +693,7 @@ private fun processPreviousPush(
         val score = gameBoard.push(lastPush, enemy)
             .score(we.push(lastPush), ourQuests, enemy.push(lastPush), enemyQuests, false)
         val oppositeScore = gameBoard.push(lastPush.opposite, enemy)
-            .score(we.push(lastPush.opposite), ourQuests, enemy.push(lastPush.opposite), enemyQuests, false)
+            .score(enemy.push(lastPush.opposite), ourQuests, enemy.push(lastPush.opposite), enemyQuests, false)
         if (score < oppositeScore) {
             log("! $score < $oppositeScore deduct enemy $lastPush")
             allBoards.computeIfAbsent(lastBoardAndElves) { _ -> mutableListOf() }
