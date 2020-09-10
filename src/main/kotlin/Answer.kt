@@ -680,7 +680,7 @@ private fun processPreviousPush(
             )
         val oppositeScore =
             gameBoard.push(lastPush.opposite, enemy).score(
-                ourPlayer = enemy.push(enemy.playerId, lastPush.opposite, gameBoard),
+                ourPlayer = we.push(enemy.playerId, lastPush.opposite, gameBoard),
                 enemyPlayer = enemy.push(enemy.playerId, lastPush.opposite, gameBoard),
                 collision = false
             )
