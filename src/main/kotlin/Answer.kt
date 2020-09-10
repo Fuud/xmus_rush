@@ -1232,9 +1232,24 @@ private fun filterOutPushes(
             }
             SAME_MOVE -> pushes.filter {
                 val lastEnemyPush = prevEnemyPushes.last()
-                it.pushes.enemyPush == lastEnemyPush
-                        //   || (isDraw && it.pushes.enemyPush == lastEnemyPush.opposite)
-                        || (excludeOur && it.pushes.ourPush != prevOurPushes.last())
+                val lastOurPush = prevOurPushes.last()
+                if (it.pushes.enemyPush == lastEnemyPush) {
+                    if (isDraw) {
+                        if (it.pushes.ourPush == lastOurPush.opposite) {
+                            false
+                        } else if (excludeOur && it.pushes.ourPush == lastOurPush) {
+                            false
+                        } else {
+                            true
+                        }
+                    } else if (excludeOur && it.pushes.ourPush == lastOurPush) {
+                        false
+                    } else {
+                        true
+                    }
+                } else {
+                    false
+                }
             }
             else -> pushes
         }
