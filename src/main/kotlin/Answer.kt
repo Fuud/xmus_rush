@@ -691,9 +691,9 @@ private fun processPreviousPush(
         }
 
         val score = gameBoard.push(lastPush, enemy)
-            .score(we.push(lastPush), ourQuests, we.numPlayerCards, enemy.push(lastPush), enemyQuests, enemy.numPlayerCards, false)
+            .score(we.push(lastPush), ourQuests, enemy.push(lastPush), enemyQuests, false)
         val oppositeScore = gameBoard.push(lastPush.opposite, enemy)
-            .score(we.push(lastPush.opposite), ourQuests, we.numPlayerCards, enemy.push(lastPush.opposite), enemyQuests, enemy.numPlayerCards, false)
+            .score(we.push(lastPush.opposite), ourQuests, enemy.push(lastPush.opposite), enemyQuests, false)
         if (score < oppositeScore) {
             log("! $score < $oppositeScore deduct enemy $lastPush")
             allBoards.computeIfAbsent(lastBoardAndElves) { _ -> mutableListOf() }
@@ -774,9 +774,9 @@ fun readInput(input: Scanner): InputConditions {
         enemyQuestsSet = enemyQuestsSet.set(Items.index(it))
     }
 
-    val ttn = if(turnType ==0) "PUSH" else "MOVE"
+    val ttn = if (turnType == 0) "PUSH" else "MOVE"
     val ourBoardField = gameBoard[we.point]
-    if(ourBoardField.containsQuestItem(we.playerId, ourQuestsSet)) {
+    if (ourBoardField.containsQuestItem(we.playerId, ourQuestsSet)) {
         val quest = abs(ourBoardField.item)
         val ourNextQuests = Quests.takeOur(quest)
         log("we standing at ${Items.name(quest)} at $ttn turn. change ourQuestsSet from $ourQuestsSet to $ourNextQuests")
@@ -785,7 +785,7 @@ fun readInput(input: Scanner): InputConditions {
     }
 
     val enemyBoardField = gameBoard[enemy.point]
-    if(enemyBoardField.containsQuestItem(enemy.playerId, enemyQuestsSet)) {
+    if (enemyBoardField.containsQuestItem(enemy.playerId, enemyQuestsSet)) {
         val quest = abs(enemyBoardField.item)
         val enemyNextQuests = Quests.takeEnemy(quest)
         log("enemy standing at ${Items.name(quest)} at $ttn turn. change enemyQuestsSet from $enemyQuestsSet to $enemyNextQuests")
@@ -793,7 +793,7 @@ fun readInput(input: Scanner): InputConditions {
         enemy = enemy.copy(numPlayerCards = enemy.numPlayerCards - 1)
     }
 
-    log("board score = ${gameBoard.score(we, ourQuestsSet, we.numPlayerCards, enemy, enemyQuestsSet, enemy.numPlayerCards, false)}")
+    log("board score = ${gameBoard.score(we, ourQuestsSet, enemy, enemyQuestsSet, false)}")
 
     return InputConditions(turnType, gameBoard, ourQuestsSet, enemyQuestsSet, we, enemy)
 }
@@ -896,18 +896,16 @@ data class PushAndMove(
     val ourQuestCompleted = ourDomain.getOurQuestsCount()
 
     val score: Double = this.let { push ->
-        val ourItemRemain = push.ourPlayer.numPlayerCards - push.ourQuestCompleted
-        val enemyItemRemain = push.enemyPlayer.numPlayerCards - push.enemyQuestCompleted
         val collision = push.pushes.collision()
 
         return@let push.board.score(
             push.ourPlayer,
             push.ourQuests,
-            ourItemRemain,
             push.enemyPlayer,
             push.enemyQuests,
-            enemyItemRemain,
-            collision
+            collision,
+            ourDomain = ourDomain,
+            enemyDomain = enemyDomain
         )
     }
 }
@@ -1143,16 +1141,16 @@ private fun selectPivotSolver(
 
     log(
         "OurStrategy: ${
-        ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
-            .sortedByDescending { it.second }
-            .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+            ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
+                .sortedByDescending { it.second }
+                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
         }"
     )
     log(
         "EnemyStrategy: ${
-        enemyStrategy.mapIndexed { idx, score -> enemyPushes[idx] to score }
-            .sortedByDescending { it.second }
-            .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+            enemyStrategy.mapIndexed { idx, score -> enemyPushes[idx] to score }
+                .sortedByDescending { it.second }
+                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
         }"
     )
 
@@ -1384,7 +1382,7 @@ data class DomainInfo(
 
     val size: Int = java.lang.Long.bitCount(domainBits)
     val hasAccessToBorder = domainBits.and(BORDER) != 0L
-    val tilePathsCount = twoPathsTileCount+threePathsTileCount+fourPathsTileCount
+    val tilePathsCount = twoPathsTileCount + threePathsTileCount + fourPathsTileCount
 
     companion object {
         val UP_BORDER: Long =
@@ -1888,12 +1886,16 @@ data class GameBoard(val bitBoard: BitBoard) {
     fun score(
         ourPlayer: Player,
         ourQuests: Int,
-        ourItemRemain: Int,
         enemyPlayer: Player,
         enemyQuests: Int,
-        enemyItemRemain: Int,
-        collision: Boolean
+        collision: Boolean,
+        ourDomain: DomainInfo = findDomain(ourPlayer.point, ourQuests, enemyQuests),
+        enemyDomain: DomainInfo = findDomain(enemyPlayer.point, ourQuests, enemyQuests)
     ): Double {
+
+        val ourItemRemain = ourPlayer.numPlayerCards - ourDomain.getOurQuestsCount()
+        val enemyItemRemain = enemyPlayer.numPlayerCards - enemyDomain.getEnemyQuestsCount()
+
         if (ourItemRemain == 0) {
             if (enemyItemRemain == 0) {
                 val enemyPushToLastQuest = enemyPlayer.numPlayerCards == 1
@@ -1917,8 +1919,6 @@ data class GameBoard(val bitBoard: BitBoard) {
         }
         val ourFieldOnHand = bitBoard.ourField()
         val enemyFieldOnHand = bitBoard.enemyField()
-        val ourDomain = findDomain(ourPlayer.point, ourQuests, enemyQuests)
-        val enemyDomain = findDomain(enemyPlayer.point, ourQuests, enemyQuests)
         val ourFutureQuests = if (ourPlayer.numPlayerCards == ourItemRemain) 0.0 else {
             1.0
         }
@@ -2092,7 +2092,7 @@ data class Player(
 
     val point: Point = Point.point(playerX, playerY)
 
-    fun push(push:OnePush) :Player{
+    fun push(push: OnePush): Player {
         var x = playerX
         var y = playerY
         push.run {
