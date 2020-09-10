@@ -2196,15 +2196,37 @@ data class Player(
         } else {
             pushes.enemyPush
         }
+        val firstPushField = if (pushes.ourPush.direction.isVertical) {
+            gameBoard.bitBoard.enemyField()
+        } else {
+            gameBoard.bitBoard.ourField()
+        }
+        val secondPushField = if (pushes.ourPush.direction.isVertical) {
+            gameBoard.bitBoard.ourField()
+        } else {
+            gameBoard.bitBoard.enemyField()
+        }
+
+        var questsToTake = 0
 
         firstPush.run {
             if (direction.isVertical) {
                 if (x == rowColumn) {
+                    val wasOnBorder = (y == 0 || y == 6)
                     y = (y + (if (direction == UP) -1 else 1) + 7) % 7
+                    val nowOnBorder = (y == 0 || y == 6)
+                    if (wasOnBorder && nowOnBorder && firstPushField.containsQuestItem(playerId, currentQuests)) {
+                        questsToTake = questsToTake.set(firstPushField.item.absoluteValue)
+                    }
                 }
             } else {
                 if (y == rowColumn) {
+                    val wasOnBorder = (x == 0 || x == 6)
                     x = (x + (if (direction == LEFT) -1 else 1) + 7) % 7
+                    val nowOnBorder = (x == 0 || x == 6)
+                    if (wasOnBorder && nowOnBorder && firstPushField.containsQuestItem(playerId, currentQuests)) {
+                        questsToTake = questsToTake.set(firstPushField.item.absoluteValue)
+                    }
                 }
             }
         }
@@ -2212,20 +2234,31 @@ data class Player(
         secondPush.run {
             if (direction.isVertical) {
                 if (x == rowColumn) {
+                    val wasOnBorder = (y == 0 || y == 6)
                     y = (y + (if (direction == UP) -1 else 1) + 7) % 7
+                    val nowOnBorder = (y == 0 || y == 6)
+                    if (wasOnBorder && nowOnBorder && secondPushField.containsQuestItem(playerId, currentQuests)) {
+                        questsToTake = questsToTake.set(secondPushField.item.absoluteValue)
+                    }
                 }
             } else {
                 if (y == rowColumn) {
+                    val wasOnBorder = (x == 0 || x == 6)
                     x = (x + (if (direction == LEFT) -1 else 1) + 7) % 7
+                    val nowOnBorder = (x == 0 || x == 6)
+                    if (wasOnBorder && nowOnBorder && secondPushField.containsQuestItem(playerId, currentQuests)) {
+                        questsToTake = questsToTake.set(secondPushField.item.absoluteValue)
+                    }
                 }
             }
         }
 
-        return if (x != playerX || y != playerY) {
+        val moved = if (x != playerX || y != playerY) {
             copy(playerX = x, playerY = y)
         } else {
             this
         }
+        return moved.takeQuests(questsToTake)
     }
 
     fun takeQuests(quests: Int): Player {
