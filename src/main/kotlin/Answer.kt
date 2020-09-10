@@ -1002,7 +1002,7 @@ private fun selectPivotSolver(
         return ourPushes[0]
     }
 
-    if (true) {
+    if (false) {
         stringBuilder.clear()
 
         stringBuilder.append("\n#our\\enemy | ")
