@@ -2024,8 +2024,6 @@ data class GameBoard(val bitBoard: BitBoard) {
                         bothTakeEstimate * weTakeProbability * enemyTakeProbability +
                         estimate * (1 - weTakeProbability) * (1 - enemyTakeProbability)
             } else if (weTakeProbability > 0) {
-                val weTakeProbability = ourNonQuestItemsCount / ourHiddenQuestsCount.toDouble()
-
                 val weTakeEstimate = computeEstimate(
                     ourItemRemain = ourItemRemain - ourAdditionalQuest - 1,
                     enemyItemRemain = enemyItemRemain - enemyAdditionalQuest,
@@ -2035,8 +2033,6 @@ data class GameBoard(val bitBoard: BitBoard) {
 
                 result = weTakeEstimate * weTakeProbability + estimate * (1 - weTakeProbability)
             } else if (enemyTakeProbability > 0) {
-                val enemyTakeProbability = enemyHiddenQuestsCount.toDouble() / enemyNonQuestItemsCount
-
                 val enemyTakeEstimate = computeEstimate(
                     ourItemRemain = ourItemRemain - ourAdditionalQuest,
                     enemyItemRemain = enemyItemRemain - enemyAdditionalQuest - 1,
