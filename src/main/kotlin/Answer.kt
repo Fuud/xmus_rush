@@ -2159,25 +2159,38 @@ data class Player(
 
     val point: Point = Point.point(playerX, playerY)
 
-    fun push(playerId: Int, push: OnePush, board: GameBoard): Player {
+    fun push(pushPlayerId: Int, push: OnePush, board: GameBoard): Player {
         var x = playerX
         var y = playerY
+        val firstPushField = if (pushPlayerId==0) board.bitBoard.ourField() else board.bitBoard.enemyField()
+        var questsToTake = 0
         push.run {
             if (direction.isVertical) {
                 if (x == rowColumn) {
+                    val wasOnBorder = (y == 0 || y == 6)
                     y = (y + (if (direction == UP) -1 else 1) + 7) % 7
+                    val nowOnBorder = (y == 0 || y == 6)
+                    if (wasOnBorder && nowOnBorder && firstPushField.containsQuestItem(pushPlayerId, currentQuests)) {
+                        questsToTake = questsToTake.set(firstPushField.item.absoluteValue)
+                    }
                 }
             } else {
                 if (y == rowColumn) {
+                    val wasOnBorder = (x == 0 || x == 6)
                     x = (x + (if (direction == LEFT) -1 else 1) + 7) % 7
+                    val nowOnBorder = (x == 0 || x == 6)
+                    if (wasOnBorder && nowOnBorder && firstPushField.containsQuestItem(pushPlayerId, currentQuests)) {
+                        questsToTake = questsToTake.set(firstPushField.item.absoluteValue)
+                    }
                 }
             }
         }
-        return if (x != playerX || y != playerY) {
+        val moved = if (x != playerX || y != playerY) {
             copy(playerX = x, playerY = y)
         } else {
             this
         }
+        return moved.takeQuests(questsToTake)
     }
 
     fun push(pushes: Pushes, gameBoard: GameBoard): Player {
