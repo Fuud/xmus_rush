@@ -9,7 +9,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.StringReader
-import java.lang.Exception
 import java.lang.management.GarbageCollectorMXBean
 import java.lang.management.ManagementFactory
 import java.text.DecimalFormat
@@ -979,6 +978,8 @@ fun computeEstimate(
 val a = Array(28) { DoubleArray(28) { 0.0 } } // interior[column][row]
 val stringBuilder = StringBuilder(10_000)
 
+private val printScores = java.lang.Boolean.getBoolean("printScores")
+
 //pivot method from https://www.math.ucla.edu/~tom/Game_Theory/mat.pdf
 private fun selectPivotSolver(
     pushes: List<PushAndMove>
@@ -1006,7 +1007,7 @@ private fun selectPivotSolver(
         return ourPushes[0]
     }
 
-    if (false) {
+    if (printScores) {
         stringBuilder.clear()
 
         stringBuilder.append("\n#our\\enemy | ")
