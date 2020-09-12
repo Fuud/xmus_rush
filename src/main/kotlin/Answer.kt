@@ -5,6 +5,7 @@ import Direction.*
 import Items.NO_ITEM
 import OnePush.Companion.onePush
 import RepetitionType.*
+import Tweaks.scoreCollisionOnlyForPreviousPushes
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -22,9 +23,6 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.system.measureNanoTime
 
-/**
- * Help the Christmas elves fetch presents in a magical labyrinth!
- **/
 val startTime = System.currentTimeMillis()
 fun log(s: Any?) {
     System.err.println("\n#[${System.currentTimeMillis() - startTime}] $s\n")
@@ -914,14 +912,15 @@ data class PushAndMove(
     val pushes: Pushes,
     val board: GameBoard,
     val ourPlayer: Player,
-    val enemyPlayer: Player
+    val enemyPlayer: Player,
+    val useCollisionAtScore: Boolean = false
 ) {
 
     val ourDomain = board.findDomain(ourPlayer.point, ourPlayer.currentQuests, enemyPlayer.currentQuests)
     val enemyDomain = board.findDomain(enemyPlayer.point, enemyPlayer.currentQuests, enemyPlayer.currentQuests)
 
     val score: Double = this.let { push ->
-        val collision = push.pushes.collision()
+        val collision = useCollisionAtScore && push.pushes.collision()
 
         return@let push.board.score(
             push.ourPlayer,
@@ -941,14 +940,19 @@ private fun findBestPush(
     prevPushesAtThisPosition: List<Pushes>? = null,
     numberOfDraws: Int = 0
 ): OnePush {
-
+    probablyLogCompilation()
+    val previousPushes = if (prevPushesAtThisPosition != null && scoreCollisionOnlyForPreviousPushes) {
+        prevPushesAtThisPosition
+    } else {
+        emptyList()
+    }
     val pushes = computePushes(
         gameBoard,
         we,
         emptyList(),
-        enemy
+        enemy,
+        previousPushes
     )
-    probablyLogCompilation()
     val filteredPushes = filterOutPushes(pushes, prevPushesAtThisPosition, numberOfDraws, we, enemy)
     val result = selectPivotSolver(filteredPushes)
     probablyLogCompilation()
@@ -1174,15 +1178,29 @@ private fun selectPivotSolver(
     log("selection=$selection ourSum=${ourStrategy.sum()} enemySum=${enemyStrategy.sum()}")
 
     run {
+        var threshold = -1.0
         val best = ourStrategy
             .mapIndexed { idx, score -> ourPushes[idx] to score }
             .sortedByDescending { it.second }
-            .take(1)
+            .takeWhile {
+                if (threshold < 0) {
+                    threshold = it.second * Tweaks.nearStrategiesThreshold
+                    true
+                } else {
+                    it.second > threshold
+                }
+            }
         val norm = best.sumByDouble { it.second }
         var currentSum = 0.0
+        if (best.size > 1) {
+            log("${best.size} near strategies")
+        }
         for (idx in best.indices) {
             currentSum += best[idx].second
             if (currentSum >= selection * norm) {
+                if (idx > 0) {
+                    log("select not the first strategy")
+                }
                 return best[idx].first
             }
         }
@@ -1275,22 +1293,25 @@ private fun filterOutPushes(
 fun computePushes(
     gameBoard: GameBoard,
     we: Player,
-    forbiddenPushMoves: List<OnePush> = emptyList(),
-    enemy: Player
+    forbiddenOurPushes: List<OnePush> = emptyList(),
+    enemy: Player,
+    previousPushesAtPosition: List<Pushes> = emptyList()
 ): List<PushAndMove> {
     val result = mutableListOf<PushAndMove>()
     for (pushes in Pushes.allPushes) {
-        if (forbiddenPushMoves.contains(pushes.ourPush)) {
+        if (forbiddenOurPushes.contains(pushes.ourPush)) {
             continue
         }
         val ourPlayer = we.push(pushes, gameBoard)
         val enemyPlayer = enemy.push(pushes, gameBoard)
         val newBoard = gameBoard.push(pushes)
+        val useCollisionAtScore = previousPushesAtPosition.none { it.ourPush.collision(pushes.ourPush) }
         val pushAndMove = PushAndMove(
             pushes = pushes,
             board = newBoard,
             ourPlayer = ourPlayer,
-            enemyPlayer = enemyPlayer
+            enemyPlayer = enemyPlayer,
+            useCollisionAtScore = useCollisionAtScore
         )
         result.add(pushAndMove)
     }
@@ -1989,8 +2010,10 @@ data class GameBoard(val bitBoard: BitBoard) {
             secondaryScore = secondaryScore
         )
         var result = estimate
-        val weTake = ourDomain.getOurQuestsCount() + ourAdditionalQuest
-        val enemyTake = enemyDomain.getEnemyQuestsCount() + enemyAdditionalQuest
+        val weTake = ourDomain.getOurQuestsCount() + ourAdditionalQuest +
+                (min(3, ourPlayer.numPlayerCards) - ourPlayer.currentQuestsCount)
+        val enemyTake = enemyDomain.getEnemyQuestsCount() + enemyAdditionalQuest +
+                (min(3, enemyPlayer.numPlayerCards) - enemyPlayer.currentQuestsCount)
         if ((weTake > 0 || enemyTake > 0)) {
             var weTakeProbability = 0.0
             var enemyTakeProbability = 0.0
@@ -2631,6 +2654,11 @@ object Items {
     }
 
     val NO_ITEM = 0
+}
+
+object Tweaks {
+    val scoreCollisionOnlyForPreviousPushes = false
+    val nearStrategiesThreshold = 1.0
 }
 
 //we counted we counted our little fingers were tired
