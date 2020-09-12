@@ -3,6 +3,7 @@
 import BitField.Companion.bitField
 import Direction.*
 import Items.NO_ITEM
+import Items.indexesToNames
 import OnePush.Companion.onePush
 import RepetitionType.*
 import java.io.IOException
@@ -34,8 +35,6 @@ var super_cached = 0
 var cached = 0
 var non_cached = 0
 var quests_not_match = 0
-
-var maxDomains = 0
 
 val setupMonitoring = run {
     log("java started as: ${ManagementFactory.getRuntimeMXBean().inputArguments}")
@@ -187,10 +186,9 @@ val probablyLogCompilation: () -> Unit = run {
 
 val rand = Random(777)
 
-val moveScores = Point.points.flatten()
-    .map { it to 0.0 }
-    .toMap().toMutableMap()
-val movePushScores = Array(49) { DoubleArray(28) }
+val allPushScores = DoubleArray(49 * 49 * 28 * 28)
+val allPushScoresZeros = DoubleArray(49 * 49 * 28 * 28)
+val ourPointsSumScore = DoubleArray(49)
 
 
 var lastBoard: GameBoard? = null
@@ -458,7 +456,10 @@ object Quests {
     }
 }
 
-private fun findBestMove(
+inline fun idx(ourPoint: Point, enemyPoint: Point, ourPush: OnePush, enemyPush: OnePush) =
+    ((ourPoint.idx * 49 + enemyPoint.idx) * 28 + ourPush.idx) * 28 + enemyPush.idx
+
+fun findBestMove(
     gameBoard: GameBoard,
     we: Player,
     step: Int,
@@ -466,96 +467,90 @@ private fun findBestMove(
 ): PathElem? {
     log("findBestMove")
     val startTime = System.nanoTime()
+    val timeLimit = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 42)
+
     val ourPaths = gameBoard.findPaths(we, we.currentQuests)
     val ourItemsTaken = ourPaths.maxWith(compareBy { Integer.bitCount(it.itemsTakenSet) })!!.itemsTakenSet
     val ourItemsTakenSize = Integer.bitCount(ourItemsTaken)
-    val we = we.takeQuests(ourItemsTaken)
 
-    val enemyDomain = gameBoard.findDomain(enemy.point, we.currentQuests, enemy.currentQuests)
-    val enemy = enemy.takeQuests(enemyDomain.enemyQuestBits)
-
-    run {
-        val ourQuests = Items.indexesToNames(we.currentQuests)
-        val enemyQuests = Items.indexesToNames(enemy.currentQuests)
-        log("Our next quests: $ourQuests;  enemy next quests: $enemyQuests}")
-    }
-
-    val ends = ourPaths.filter { Integer.bitCount(it.itemsTakenSet) == ourItemsTakenSize }
+    val ourBestPaths = ourPaths.filter { Integer.bitCount(it.itemsTakenSet) == ourItemsTakenSize }
+    val ourEnds = ourBestPaths
         .map { it.point }.toHashSet()
-    if (ends.size == 1) {
+    if (ourEnds.size == 1) {
         return ourPaths.find { Integer.bitCount(it.itemsTakenSet) == ourItemsTakenSize }!!
     }
-    ends.forEach { moveScores[it] = 0.0 }
 
-    val timeLimit = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 42)
+    val enemyPaths = gameBoard.findPaths(enemy, enemy.currentQuests)
+    val enemyItemsTaken = enemyPaths.maxWith(compareBy { Integer.bitCount(it.itemsTakenSet) })!!.itemsTakenSet
+    val enemyItemsTakenSize = Integer.bitCount(enemyItemsTaken)
 
-    var count = 0
-    for (p in ends) {
-        movePushScores[p.idx].fill(0.0)
-    }
-    for (pushes in Pushes.allPushes) {
-        if (System.nanoTime() - startTime > timeLimit * 2 && count > 0) {
-            log("stop computePushes, computed $count pushes")
-            break
-        }
-        count++
+    val enemyEnds = enemyPaths.filter { Integer.bitCount(it.itemsTakenSet) == enemyItemsTakenSize }
+        .map { it.point }.toHashSet()
 
-        val ourPlayer = we.push(pushes, gameBoard)
-        val enemyPlayer = enemy.push(pushes, gameBoard)
-        val newBoard = gameBoard.push(pushes)
-        val pushAndMove = PushAndMove(
-            pushes = pushes,
-            board = newBoard,
-            ourPlayer = ourPlayer,
-            enemyPlayer = enemyPlayer
-        )
-        if (pushAndMove.board === gameBoard) {
-            continue
-        }
-        ends.forEach { point ->
-            val fake = we.copy(playerX = point.x, playerY = point.y).push(pushes, gameBoard)
-            val score = pushAndMove.copy(ourPlayer = fake).score
-            moveScores[point] = moveScores[point]!! + score
-            movePushScores[point.idx][pushes.ourPush.idx] += score
-        }
+    return we.takeQuests(ourItemsTaken) { we ->
 
-        maxDomains = max(maxDomains, pushAndMove.board.domains.count())
-    }
-    val maxScoreByPoint = movePushScores.map { it.max() }
+        enemy.takeQuests(enemyItemsTaken) { enemy ->
 
-    val scoreComparator = compareBy<PathElem> { pathElem ->
-        moveScores[pathElem.point]!!
-    }.thenComparing { pathElem ->
-        max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
-    }.thenComparing { pathElem ->
-        if (gameBoard.bitBoard.ourField().containsQuestItem(we.playerId, we.currentQuests)) {
-            val (x, y) = pathElem.point
-            if ((x == 0 || x == 6) && (y == 0 || y == 6)) {
-                1
-            } else {
-                0
+            run {
+                val ourQuests = we.currentQuests.indexesToNames()
+                val enemyQuests = enemy.currentQuests.indexesToNames()
+                log("Our next quests: $ourQuests;  enemy next quests: $enemyQuests}")
             }
-        } else {
-            0
-        }
-    }.thenComparing { pathElem ->
-        Integer.bitCount(gameBoard.bitBoard[pathElem.point].tile)
-    }
-    val pathsComparator = compareBy<PathElem> { pathElem ->
-        Integer.bitCount(pathElem.itemsTakenSet)
-    }.thenComparing { pathElem ->
-        maxScoreByPoint[pathElem.point.idx]!!
-    }.thenComparing(scoreComparator)
 
-    val bestPath = ourPaths.maxWith(pathsComparator)
-    val maxByAverageScore = ourPaths.maxWith(compareBy<PathElem> { pathElem ->
-        Integer.bitCount(pathElem.itemsTakenSet)
-    }.thenComparing(scoreComparator))
-    if (maxByAverageScore?.point != bestPath?.point) {
-        log("MoveCandidate by average score ${maxByAverageScore?.point} differ from current best ${bestPath?.point}")
+            System.arraycopy(allPushScoresZeros, 0, allPushScores, 0, allPushScores.size)
+            ourPointsSumScore.fill(0.0)
+
+            var count = 0
+            var aborted = false
+            for (pushes in Pushes.allPushes) {
+                if (System.nanoTime() - startTime > timeLimit && count > 0) {
+                    log("stop computePushes, computed $count pushes")
+                    aborted = true
+                    break
+                }
+                count++
+                if (pushes.collision()) {
+                    continue
+                }
+
+                we.push(pushes, gameBoard) { we ->
+                    enemy.push(pushes, gameBoard) { enemy ->
+                        val newBoard = gameBoard.push(pushes)
+
+                        for (ourPoint in ourEnds) {
+                            for (enemyPoint in enemyEnds) {
+                                if (System.nanoTime() - startTime > timeLimit && count > 0) {
+                                    log("stop computePushes, computed $count pushes")
+                                    aborted = true
+                                    break
+                                }
+                                we.copy(playerX = ourPoint.x, playerY = ourPoint.y) { we ->
+                                    we.push(pushes, gameBoard) { we ->
+                                        enemy.copy(playerX = enemyPoint.x, playerY = enemyPoint.y) { enemy ->
+                                            enemy.push(pushes, gameBoard) { enemy ->
+                                                val score = PushAndMove.calcScore(pushes, newBoard, we, enemy)
+                                                allPushScores[
+                                                        idx(ourPoint,enemyPoint,pushes.ourPush,pushes.enemyPush)
+                                                ] = score
+                                                ourPointsSumScore[ourPoint.idx] += score
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            val bestPoint = ourEnds.maxBy { ourPointsSumScore[it.idx] }!!
+
+            val bestPath = ourBestPaths.find { it.point == bestPoint }
+
+            probablyLogCompilation()
+            bestPath
+        }
     }
-    probablyLogCompilation()
-    return bestPath
 }
 
 private fun processPreviousPush(
@@ -674,27 +669,33 @@ private fun processPreviousPush(
         run {
             var foundRandom = false
             for (i in drawRepetitions.indices) {
-                if (drawRepetitions[i] == RANDOM_MOVE){
+                if (drawRepetitions[i] == RANDOM_MOVE) {
                     foundRandom = true
                 }
-                if (drawRepetitions[i] != UNKNOWN && foundRandom){
+                if (drawRepetitions[i] != UNKNOWN && foundRandom) {
                     drawRepetitions[i] = RANDOM_MOVE
                 }
             }
         }
 
-        val score =
-            gameBoard.push(lastPush, enemy).score(
-                ourPlayer = we.push(enemy.playerId, lastPush, gameBoard),
-                enemyPlayer = enemy.push(enemy.playerId, lastPush, gameBoard),
-                collision = false
-            )
-        val oppositeScore =
-            gameBoard.push(lastPush.opposite, enemy).score(
-                ourPlayer = we.push(enemy.playerId, lastPush.opposite, gameBoard),
-                enemyPlayer = enemy.push(enemy.playerId, lastPush.opposite, gameBoard),
-                collision = false
-            )
+        val score = we.push(enemy.playerId, lastPush, gameBoard) { we ->
+            enemy.push(enemy.playerId, lastPush, gameBoard) { enemy ->
+                gameBoard.push(lastPush, enemy).score(
+                    ourPlayer = we,
+                    enemyPlayer = enemy,
+                    collision = false
+                )
+            }
+        }
+        val oppositeScore = we.push(enemy.playerId, lastPush.opposite, gameBoard) { we ->
+            enemy.push(enemy.playerId, lastPush.opposite, gameBoard) { enemy ->
+                gameBoard.push(lastPush, enemy).score(
+                    ourPlayer = we,
+                    enemyPlayer = enemy,
+                    collision = false
+                )
+            }
+        }
         if (score < oppositeScore) {
             log("! $score < $oppositeScore deduct enemy $lastPush")
             allBoards.computeIfAbsent(lastBoardAndElves) { _ -> mutableListOf() }
@@ -730,10 +731,10 @@ fun readInput(input: Scanner): InputConditions {
     val turnType = input.nextInt() // 0 - push, 1 - move
     val board = BoardDto(input)
 
-    var we = Player(0, input)
+    val we = Player(0, input)
     val ourTile = Tile.read(input)
 
-    var enemy = Player(1, input)
+    val enemy = Player(1, input)
     val enemyTile = Tile.read(input)
 
     val items = (0 until input.nextInt()).map { ItemDto(input) }
@@ -753,81 +754,89 @@ fun readInput(input: Scanner): InputConditions {
             result
         }
     }
-    we = we.copy(alreadyTakenQuests = ourAlreadyTakenQuests)
-    enemy = enemy.copy(alreadyTakenQuests = enemyAlreadyTakenQuests)
+    return we.copy(alreadyTakenQuests = ourAlreadyTakenQuests) { we ->
+        enemy.copy(alreadyTakenQuests = enemyAlreadyTakenQuests) { enemy ->
 
 
-    val ourField = Field(ourTile,
-        item = items.singleOrNull { it.isOnOurHand }
-            ?.toItem()
-            ?: NO_ITEM
-    )
-    val enemyField = Field(enemyTile,
-        item = items.singleOrNull { it.isOnEnemyHand }
-            ?.toItem()
-            ?: 0
-    )
+            val ourField = Field(ourTile,
+                item = items.singleOrNull { it.isOnOurHand }
+                    ?.toItem()
+                    ?: NO_ITEM
+            )
+            val enemyField = Field(enemyTile,
+                item = items.singleOrNull { it.isOnEnemyHand }
+                    ?.toItem()
+                    ?: 0
+            )
 
-    val ourQuests = quests.filter { it.questPlayerId == 0 }.map { it.questItemName }
-    val enemyQuests = quests.filter { it.questPlayerId == 1 }.map { it.questItemName }
-    Quests.updateQuests(ourQuests, enemyQuests)
+            val ourQuests = quests.filter { it.questPlayerId == 0 }.map { it.questItemName }
+            val enemyQuests = quests.filter { it.questPlayerId == 1 }.map { it.questItemName }
+            Quests.updateQuests(ourQuests, enemyQuests)
 
-    we = we.copy(lastQuestIdx = Quests.globalQuestsInGameOrder.indexOf(Items.index(ourQuests.last())))
-    enemy = enemy.copy(lastQuestIdx = Quests.globalQuestsInGameOrder.indexOf(Items.index(enemyQuests.last())))
+            we.copy(lastQuestIdx = Quests.globalQuestsInGameOrder.indexOf(Items.index(ourQuests.last()))) { we ->
+                enemy.copy(lastQuestIdx = Quests.globalQuestsInGameOrder.indexOf(Items.index(enemyQuests.last()))) { enemy ->
 
-    val boardArray = Array(7 * 7) { idx ->
-        val x = idx % 7
-        val y = idx / 7
-        Field(
-            board.board[y][x],
-            items.singleOrNull { it.itemX == x && it.itemY == y }?.toItem() ?: NO_ITEM
-        )
+                    val boardArray = Array(7 * 7) { idx ->
+                        val x = idx % 7
+                        val y = idx / 7
+                        Field(
+                            board.board[y][x],
+                            items.singleOrNull { it.itemX == x && it.itemY == y }?.toItem() ?: NO_ITEM
+                        )
+                    }
+                    val gameBoard = GameBoard(BitBoard.newInstance(boardArray, ourField, enemyField))
+
+                    var ourQuestsSet = 0
+                    ourQuests.forEach {
+                        ourQuestsSet = ourQuestsSet.set(Items.index(it))
+                    }
+
+                    var enemyQuestsSet = 0
+                    enemyQuests.forEach {
+                        enemyQuestsSet = enemyQuestsSet.set(Items.index(it))
+                    }
+
+                    we.copy(currentQuests = ourQuestsSet) { we ->
+                        enemy.copy(currentQuests = enemyQuestsSet) { enemy ->
+
+                            val ttn = if (turnType == 0) "PUSH" else "MOVE"
+                            val ourBoardField = gameBoard[we.point]
+
+                            val ourImmediateQuest =
+                                if (ourBoardField.containsQuestItem(we.playerId, ourQuestsSet)) {
+                                    val quest = abs(ourBoardField.item)
+                                    log(
+                                        "we standing at ${Items.name(quest)} at $ttn turn. change ourQuestsSet from " +
+                                                "${ourQuestsSet.indexesToNames()} to ${we.currentQuests.indexesToNames()}"
+                                    )
+                                    0.set(quest)
+                                } else {
+                                    0
+                                }
+                            we.takeQuests(ourImmediateQuest) { we ->
+                                val enemyBoardField = gameBoard[enemy.point]
+                                val enemyImmediateQuest =
+                                    if (enemyBoardField.containsQuestItem(enemy.playerId, enemyQuestsSet)) {
+                                        val quest = abs(enemyBoardField.item)
+                                        log(
+                                            "enemy standing at ${Items.name(quest)} at $ttn turn. change enemyQuestsSet from " +
+                                                    "${enemyQuestsSet.indexesToNames()} to ${enemy.currentQuests.indexesToNames()}"
+                                        )
+                                        0.set(quest)
+                                    } else {
+                                        0
+                                    }
+                                enemy.takeQuests(enemyImmediateQuest) { enemy ->
+                                    log("board score = ${gameBoard.score(we, enemy, false)}")
+                                    InputConditions(turnType, gameBoard, we.escapeCopy(), enemy.escapeCopy())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
-    val gameBoard = GameBoard(BitBoard.newInstance(boardArray, ourField, enemyField))
-
-    var ourQuestsSet = 0
-    ourQuests.forEach {
-        ourQuestsSet = ourQuestsSet.set(Items.index(it))
-    }
-
-    var enemyQuestsSet = 0
-    enemyQuests.forEach {
-        enemyQuestsSet = enemyQuestsSet.set(Items.index(it))
-    }
-
-    we = we.copy(currentQuests = ourQuestsSet)
-    enemy = enemy.copy(currentQuests = enemyQuestsSet)
-
-    val ttn = if (turnType == 0) "PUSH" else "MOVE"
-    val ourBoardField = gameBoard[we.point]
-    if (ourBoardField.containsQuestItem(we.playerId, ourQuestsSet)) {
-        val quest = abs(ourBoardField.item)
-        we = we.takeQuests(0.set(quest))
-        log(
-            "we standing at ${Items.name(quest)} at $ttn turn. change ourQuestsSet from ${
-                Items.indexesToNames(
-                    ourQuestsSet
-                )
-            } to ${Items.indexesToNames(we.currentQuests)}"
-        )
-    }
-
-    val enemyBoardField = gameBoard[enemy.point]
-    if (enemyBoardField.containsQuestItem(enemy.playerId, enemyQuestsSet)) {
-        val quest = abs(enemyBoardField.item)
-        enemy = enemy.takeQuests(0.set(quest))
-        log(
-            "enemy standing at ${Items.name(quest)} at $ttn turn. change enemyQuestsSet from ${
-                Items.indexesToNames(
-                    enemyQuestsSet
-                )
-            } to ${Items.indexesToNames(enemy.currentQuests)}"
-        )
-    }
-
-    log("board score = ${gameBoard.score(we, enemy, false)}")
-
-    return InputConditions(turnType, gameBoard, we, enemy)
 }
 
 data class InputConditions(
@@ -910,26 +919,35 @@ data class Pushes(val ourPush: OnePush, val enemyPush: OnePush) {
     }
 }
 
-data class PushAndMove(
+class PushAndMove(
     val pushes: Pushes,
     val board: GameBoard,
-    val ourPlayer: Player,
-    val enemyPlayer: Player
+    ourPlayer: Player,
+    enemyPlayer: Player
 ) {
 
-    val ourDomain = board.findDomain(ourPlayer.point, ourPlayer.currentQuests, enemyPlayer.currentQuests)
-    val enemyDomain = board.findDomain(enemyPlayer.point, enemyPlayer.currentQuests, enemyPlayer.currentQuests)
+    val score: Double = calcScore(pushes, board, ourPlayer, enemyPlayer)
 
-    val score: Double = this.let { push ->
-        val collision = push.pushes.collision()
+    companion object {
+        fun calcScore(
+            pushes: Pushes,
+            board: GameBoard,
+            ourPlayer: Player,
+            enemyPlayer: Player
+        ): Double {
+            val collision = pushes.collision()
+            val ourDomain = board.findDomain(ourPlayer.point, ourPlayer.currentQuests, enemyPlayer.currentQuests)
+            val enemyDomain =
+                board.findDomain(enemyPlayer.point, enemyPlayer.currentQuests, enemyPlayer.currentQuests)
 
-        return@let push.board.score(
-            push.ourPlayer,
-            push.enemyPlayer,
-            collision,
-            ourDomain = ourDomain,
-            enemyDomain = enemyDomain
-        )
+            return board.score(
+                ourPlayer,
+                enemyPlayer,
+                collision,
+                ourDomain = ourDomain,
+                enemyDomain = enemyDomain
+            )
+        }
     }
 }
 
@@ -1283,16 +1301,18 @@ fun computePushes(
         if (forbiddenPushMoves.contains(pushes.ourPush)) {
             continue
         }
-        val ourPlayer = we.push(pushes, gameBoard)
-        val enemyPlayer = enemy.push(pushes, gameBoard)
-        val newBoard = gameBoard.push(pushes)
-        val pushAndMove = PushAndMove(
-            pushes = pushes,
-            board = newBoard,
-            ourPlayer = ourPlayer,
-            enemyPlayer = enemyPlayer
-        )
-        result.add(pushAndMove)
+        we.push(pushes, gameBoard) { ourPlayer ->
+            enemy.push(pushes, gameBoard) { enemyPlayer ->
+                val newBoard = gameBoard.push(pushes)
+                val pushAndMove = PushAndMove(
+                    pushes = pushes,
+                    board = newBoard,
+                    ourPlayer = ourPlayer,
+                    enemyPlayer = enemyPlayer
+                )
+                result.add(pushAndMove)
+            }
+        }
     }
 
     return result
@@ -1948,31 +1968,34 @@ data class GameBoard(val bitBoard: BitBoard) {
         var ourAdditionalQuest = 0
         var ourProbabilityOfOtherQuestsOnDomain = 0.0
         run {
-            val nextOurPlayer = ourPlayer.takeQuests(ourDomain.ourQuestBits)
-            if (nextOurPlayer.currentQuestsCount < min(3, nextOurPlayer.numPlayerCards)) {
-                val domainHasNextQuests = (ourDomain.ourItemsBits and nextOurPlayer.currentQuests) != 0
-                if (domainHasNextQuests) {
-                    ourAdditionalQuest = 1
+            ourPlayer.takeQuests(ourDomain.ourQuestBits) { nextOurPlayer ->
+                if (nextOurPlayer.currentQuestsCount < min(3, nextOurPlayer.numPlayerCards)) {
+                    val domainHasNextQuests = (ourDomain.ourItemsBits and nextOurPlayer.currentQuests) != 0
+                    if (domainHasNextQuests) {
+                        ourAdditionalQuest = 1
+                    }
+                    val nonQuestItemsCount =
+                        (ourDomain.ourItemsBits and nextOurPlayer.alreadyTakenQuests.inv()).bitCount()
+                    val hiddenQuestsCount = nextOurPlayer.numPlayerCards - nextOurPlayer.currentQuestsCount
+                    ourProbabilityOfOtherQuestsOnDomain = nonQuestItemsCount.toDouble() / hiddenQuestsCount
                 }
-                val nonQuestItemsCount = (ourDomain.ourItemsBits and nextOurPlayer.alreadyTakenQuests.inv()).bitCount()
-                val hiddenQuestsCount = nextOurPlayer.numPlayerCards - nextOurPlayer.currentQuestsCount
-                ourProbabilityOfOtherQuestsOnDomain = nonQuestItemsCount.toDouble() / hiddenQuestsCount
             }
         }
 
         var enemyAdditionalQuest = 0
         var enemyProbabilityOfOtherQuestsOnDomain = 0.0
         run {
-            val nextEnemyPlayer = enemyPlayer.takeQuests(enemyDomain.enemyQuestBits)
-            if (nextEnemyPlayer.currentQuestsCount < min(3, nextEnemyPlayer.numPlayerCards)) {
-                val domainHasNextQuests = (enemyDomain.enemyItemsBits and nextEnemyPlayer.currentQuests) != 0
-                if (domainHasNextQuests) {
-                    enemyAdditionalQuest = 1
+            enemyPlayer.takeQuests(enemyDomain.enemyQuestBits) { nextEnemyPlayer ->
+                if (nextEnemyPlayer.currentQuestsCount < min(3, nextEnemyPlayer.numPlayerCards)) {
+                    val domainHasNextQuests = (enemyDomain.enemyItemsBits and nextEnemyPlayer.currentQuests) != 0
+                    if (domainHasNextQuests) {
+                        enemyAdditionalQuest = 1
+                    }
+                    val nonQuestItemsCount =
+                        (enemyDomain.enemyItemsBits and nextEnemyPlayer.alreadyTakenQuests.inv()).bitCount()
+                    val hiddenQuestsCount = nextEnemyPlayer.numPlayerCards - nextEnemyPlayer.currentQuestsCount
+                    enemyProbabilityOfOtherQuestsOnDomain = nonQuestItemsCount.toDouble() / hiddenQuestsCount
                 }
-                val nonQuestItemsCount =
-                    (enemyDomain.enemyItemsBits and nextEnemyPlayer.alreadyTakenQuests.inv()).bitCount()
-                val hiddenQuestsCount = nextEnemyPlayer.numPlayerCards - nextEnemyPlayer.currentQuestsCount
-                enemyProbabilityOfOtherQuestsOnDomain = nonQuestItemsCount.toDouble() / hiddenQuestsCount
             }
         }
 
@@ -2159,16 +2182,17 @@ enum class Tile(val mask: Long, val roads: Int) {
     }
 }
 
-data class Player(
-    val playerId: Int,
-    val numPlayerCards: Int,
-    val playerX: Int,
-    val playerY: Int,
-    val alreadyTakenQuests: Int,
-    val currentQuests: Int,
-    val lastQuestIdx: Int
+class Player(
+    var playerId: Int,
+    var numPlayerCards: Int,
+    var playerX: Int,
+    var playerY: Int,
+    var alreadyTakenQuests: Int,
+    var currentQuests: Int,
+    var lastQuestIdx: Int,
+    var point: Point = Point.point(playerX, playerY),
+    var currentQuestsCount: Int = currentQuests.bitCount()
 ) {
-
     constructor(playerId: Int, input: Scanner) : this(
         playerId = playerId,
         numPlayerCards = input.nextInt(), // the total number of quests for a player (hidden and revealed)
@@ -2179,10 +2203,8 @@ data class Player(
         lastQuestIdx = 0//to be set
     )
 
-    val point: Point = Point.point(playerX, playerY)
-    val currentQuestsCount = currentQuests.bitCount()
 
-    fun push(pushPlayerId: Int, push: OnePush, board: GameBoard): Player {
+    internal inline fun <T> push(pushPlayerId: Int, push: OnePush, board: GameBoard, crossinline block: (Player) -> T): T {
         var x = playerX
         var y = playerY
         val firstPushField = if (pushPlayerId == 0) board.bitBoard.ourField() else board.bitBoard.enemyField()
@@ -2193,7 +2215,11 @@ data class Player(
                     val wasOnBorder = (y == 0 || y == 6)
                     y = (y + (if (direction == UP) -1 else 1) + 7) % 7
                     val nowOnBorder = (y == 0 || y == 6)
-                    if (wasOnBorder && nowOnBorder && firstPushField.containsQuestItem(pushPlayerId, currentQuests)) {
+                    if (wasOnBorder && nowOnBorder && firstPushField.containsQuestItem(
+                            pushPlayerId,
+                            currentQuests
+                        )
+                    ) {
                         questsToTake = questsToTake.set(firstPushField.item.absoluteValue)
                     }
                 }
@@ -2202,23 +2228,35 @@ data class Player(
                     val wasOnBorder = (x == 0 || x == 6)
                     x = (x + (if (direction == LEFT) -1 else 1) + 7) % 7
                     val nowOnBorder = (x == 0 || x == 6)
-                    if (wasOnBorder && nowOnBorder && firstPushField.containsQuestItem(pushPlayerId, currentQuests)) {
+                    if (wasOnBorder && nowOnBorder && firstPushField.containsQuestItem(
+                            pushPlayerId,
+                            currentQuests
+                        )
+                    ) {
                         questsToTake = questsToTake.set(firstPushField.item.absoluteValue)
                     }
                 }
             }
         }
-        val moved = if (x != playerX || y != playerY) {
-            copy(playerX = x, playerY = y)
+        return if (x != playerX || y != playerY) {
+            copy(playerX = x, playerY = y) {
+                it.takeQuests(questsToTake, block)
+            }
         } else {
-            this
+            this.takeQuests(questsToTake, block)
         }
-        return moved.takeQuests(questsToTake)
     }
 
-    fun push(pushes: Pushes, gameBoard: GameBoard): Player {
+    internal inline fun <T> push(pushes: Pushes, gameBoard: GameBoard, crossinline block: (Player) -> T): T {
+        return copy {
+            it.push_inPlace(pushes, gameBoard)
+            block(it)
+        }
+    }
+
+    private fun push_inPlace(pushes: Pushes, gameBoard: GameBoard) {
         if (pushes.collision()) {
-            return this
+            return
         }
         var x = playerX
         var y = playerY
@@ -2289,39 +2327,82 @@ data class Player(
             }
         }
 
-        val moved = if (x != playerX || y != playerY) {
-            copy(playerX = x, playerY = y)
-        } else {
-            this
+        this.apply {
+            playerX = x
+            playerY = y
+            point = Point.point(playerX, playerY)
+            takeQuests__inPlace(questsToTake)
         }
-        return moved.takeQuests(questsToTake)
     }
 
-    fun takeQuests(quests: Int): Player {
-        return if (quests == 0) {
-            this
-        } else {
-            val takenCount = Integer.bitCount(quests)
-            val newQuests = 0b1111_1111_1111_0 and when (takenCount) {
-                1 -> 0.set(Quests.questByIdx(lastQuestIdx + 1))
-                2 -> 0.set(Quests.questByIdx(lastQuestIdx + 1)) or
-                        0.set(Quests.questByIdx(lastQuestIdx + 2))
-                3 -> 0.set(Quests.questByIdx(lastQuestIdx + 1)) or
-                        0.set(Quests.questByIdx(lastQuestIdx + 2)) or
-                        0.set(Quests.questByIdx(lastQuestIdx + 3))
-                4 -> 0.set(Quests.questByIdx(lastQuestIdx + 1)) or
-                        0.set(Quests.questByIdx(lastQuestIdx + 2)) or
-                        0.set(Quests.questByIdx(lastQuestIdx + 3)) or
-                        0.set(Quests.questByIdx(lastQuestIdx + 4))
-                else -> throw Exception("Too many taken quests $takenCount")
-            }
-            copy(
-                numPlayerCards = numPlayerCards - takenCount,
-                alreadyTakenQuests = alreadyTakenQuests or quests,
-                currentQuests = (currentQuests and quests.inv()) or newQuests,
-                lastQuestIdx = lastQuestIdx + takenCount
-            )
+    internal inline fun <T> takeQuests(quests: Int, crossinline block: (Player) -> T): T {
+        return copy {
+            it.takeQuests__inPlace(quests)
+            block(it)
         }
+    }
+
+    private fun takeQuests__inPlace(quests: Int) {
+        if (quests == 0) {
+            return
+        }
+        val takenCount = Integer.bitCount(quests)
+        val newQuests = 0b1111_1111_1111_0 and when (takenCount) {
+            1 -> 0.set(Quests.questByIdx(lastQuestIdx + 1))
+            2 -> 0.set(Quests.questByIdx(lastQuestIdx + 1)) or
+                    0.set(Quests.questByIdx(lastQuestIdx + 2))
+            3 -> 0.set(Quests.questByIdx(lastQuestIdx + 1)) or
+                    0.set(Quests.questByIdx(lastQuestIdx + 2)) or
+                    0.set(Quests.questByIdx(lastQuestIdx + 3))
+            4 -> 0.set(Quests.questByIdx(lastQuestIdx + 1)) or
+                    0.set(Quests.questByIdx(lastQuestIdx + 2)) or
+                    0.set(Quests.questByIdx(lastQuestIdx + 3)) or
+                    0.set(Quests.questByIdx(lastQuestIdx + 4))
+            else -> throw Exception("Too many taken quests $takenCount")
+        }
+        this.apply {
+            numPlayerCards = numPlayerCards - takenCount
+            alreadyTakenQuests = alreadyTakenQuests or quests
+            currentQuests = (currentQuests and quests.inv()) or newQuests
+            lastQuestIdx = lastQuestIdx + takenCount
+        }
+    }
+
+    inline fun <T> copy(
+        numPlayerCards: Int = this.numPlayerCards,
+        playerX: Int = this.playerX,
+        playerY: Int = this.playerY,
+        alreadyTakenQuests: Int = this.alreadyTakenQuests,
+        currentQuests: Int = this.currentQuests,
+        lastQuestIdx: Int = this.lastQuestIdx,
+        crossinline block: (Player) -> T
+    ): T {
+        val idx = indexInCache
+        indexInCache++
+        val result = block(
+            cache[idx].apply {
+                this.playerId = this@Player.playerId
+                this.numPlayerCards = numPlayerCards
+                this.playerX = playerX
+                this.playerY = playerY
+                this.alreadyTakenQuests = alreadyTakenQuests
+                this.currentQuests = currentQuests
+                this.lastQuestIdx = lastQuestIdx
+                this.point = Point.point(playerX, playerY)
+                this.currentQuestsCount = currentQuests.bitCount()
+            }
+        )
+        indexInCache--
+        return result
+    }
+
+    fun escapeCopy(): Player {
+        return Player(playerId, numPlayerCards, playerX, playerY, alreadyTakenQuests, currentQuests, lastQuestIdx)
+    }
+
+    companion object {
+        var indexInCache: Int = 0
+        val cache = Array(100) { Player(0, 0, 0, 0, 0, 0, 0) }
     }
 }
 
@@ -2564,10 +2645,10 @@ object Items {
 
     fun name(index: Int) = items[index - 1]
 
-    fun indexesToNames(set: Int): List<String> {
+    fun Int.indexesToNames(): List<String> {
         val result = mutableListOf<String>()
         for (itemName in items) {
-            if (set[index(itemName)]) {
+            if (this[index(itemName)]) {
                 result.add(itemName)
             }
         }

@@ -18,6 +18,8 @@ import io.ktor.http.contentType
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.util.*
+import java.util.concurrent.TimeUnit
+import kotlin.system.measureNanoTime
 
 val ymlMapper = ObjectMapper(YAMLFactory().apply {
     this.enable(YAMLGenerator.Feature.LITERAL_BLOCK_STYLE)
@@ -50,7 +52,7 @@ object Replay {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        val replayId = "486414809"
+        val replayId = "486682624"
 
         val replayFile = File("replays/$replayId.txt")
 
@@ -341,6 +343,33 @@ object CountStop {
             .forEach {
                 println(it)
             }
+    }
+}
+
+object BestMoveOpt {
+    @JvmStatic
+    fun main(args: Array<String>) {
+        val input = Scanner(File("replays/486599520.txt"))
+
+        repeat(111){
+            readInput(input)
+        }
+
+        val (turnType, gameBoard, we, enemy) = readInput(input)
+
+        repeat(1000000) {
+            val time = measureNanoTime {
+                val bestMove = findBestMove(
+                    gameBoard = gameBoard,
+                    we = we,
+                    step = 111,
+                    enemy = enemy
+                )
+
+                println(bestMove)
+            }
+            println("time taken: ${TimeUnit.NANOSECONDS.toMillis(time)} ms")
+        }
     }
 }
 
