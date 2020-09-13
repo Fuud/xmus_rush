@@ -33,8 +33,6 @@ var cached = 0
 var non_cached = 0
 var quests_not_match = 0
 
-var maxDomains = 0
-
 val setupMonitoring = run {
     log("java started as: ${ManagementFactory.getRuntimeMXBean().inputArguments}")
 
@@ -516,8 +514,6 @@ private fun findBestMove(
             moveScores[point] = moveScores[point]!! + score
             movePushScores[point.idx][pushes.ourPush.idx] += score
         }
-
-        maxDomains = max(maxDomains, pushAndMove.board.domains.count())
     }
     val maxScoreByPoint = movePushScores.map { it.max() }
 
