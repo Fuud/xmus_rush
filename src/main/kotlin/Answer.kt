@@ -522,9 +522,6 @@ fun findBestMove(
                     break
                 }
                 count++
-                if (pushes.collision()) {
-                    continue
-                }
 
                 val newBoard = gameBoard.push(pushes)
                 for (ourPoint in ourEnds) {
@@ -562,44 +559,58 @@ fun findBestMove(
 
     var bestByPivot: PathElem? = null
 
-    if (!aborted){
-        val threshold = 0.0000001
-        fun r(value: Double): Double =
-            if (value > -threshold && value < threshold) 0.0 else value
+    if (!aborted) {
+        run {
+            val threshold = 0.0000001
+            fun r(value: Double): Double =
+                if (value > -threshold && value < threshold) 0.0 else value
 
-        for (ourPoint in ourEnds) {
-            for (enemyPoint in enemyEnds) {
-                for (pushes in Pushes.allPushes) {
-                    val score = r(allPushScores[idx(ourPoint, enemyPoint, pushes.ourPush, pushes.enemyPush)])
-                    a[pushes.enemyPush.idx][pushes.ourPush.idx] = score
+            for (ourPoint in ourEnds) {
+                for (enemyPoint in enemyEnds) {
+                    for (pushes in Pushes.allPushes) {
+                        val score = r(allPushScores[idx(ourPoint, enemyPoint, pushes.ourPush, pushes.enemyPush)])
+                        a[pushes.enemyPush.idx][pushes.ourPush.idx] = score
+                    }
+                    log("Will solve pivot for ourPoint=$ourPoint enemyPoint=$enemyPoint")
+                    probablyPrintScores(OnePush.allPushes, OnePush.allPushes)
+                    scoreForPoints[ourPoint.idx * 49 + enemyPoint.idx] = solvePivot(28, 28).score
+
+                    if (System.nanoTime() - startTime > timeLimit) {
+                        log("stop computePivots (bestMove)")
+                        aborted = true
+                        return@run
+                    }
                 }
-                scoreForPoints[ourPoint.idx*49+enemyPoint.idx] = solvePivot(28, 28).score
             }
+
+            for ((ourPointIdx, ourPoint) in ourEnds.withIndex()) {
+                for ((enemyPointIdx, enemyPoint) in enemyEnds.withIndex()) {
+                    a[enemyPointIdx][ourPointIdx] = scoreForPoints[ourPoint.idx * 49 + enemyPoint.idx]
+                }
+            }
+            probablyPrintScores(ourEnds, enemyEnds, actionToStringSize = 5)
+            val (score, ourStrategy, enemyStrategy) = solvePivot(enemyEnds.size, ourEnds.size)
+            log("score: $score")
+            log("Our strategy: ${
+                ourEnds
+                    .mapIndexed { index, point -> point to ourStrategy[index] }
+                    .sortedByDescending { it.second }
+                    .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+            }")
+            log("Enemy strategy: ${
+                enemyEnds
+                    .mapIndexed { index, point -> point to enemyStrategy[index] }
+                    .sortedByDescending { it.second }
+                    .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+            }")
+
+            bestByPivot = ourEnds
+                .mapIndexed { index, point -> point to ourStrategy[index] }
+                .maxBy { it.second }!!
+                .first
+                .let { point -> ourBestPaths.first { it.point == point } }
         }
 
-        for ((ourPointIdx, ourPoint) in ourEnds.withIndex()) {
-            for ((enemyPointIdx, enemyPoint) in enemyEnds.withIndex()) {
-                a[enemyPointIdx][ourPointIdx] = scoreForPoints[ourPoint.idx*49+enemyPoint.idx]
-            }
-        }
-        val (score, ourStrategy, enemyStrategy) = solvePivot(enemyEnds.size, ourEnds.size)
-        log("score: $score")
-        log("Our strategy: ${ourEnds
-            .mapIndexed { index, point -> point to ourStrategy[index] }
-            .sortedByDescending { it.second }
-            .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
-        }")
-        log("Enemy strategy: ${enemyEnds
-            .mapIndexed { index, point -> point to enemyStrategy[index] }
-            .sortedByDescending { it.second }
-            .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
-        }")
-
-        bestByPivot = ourEnds
-            .mapIndexed { index, point -> point to ourStrategy[index] }
-            .maxBy { it.second }!!
-            .first
-            .let {point -> ourBestPaths.first { it.point ==  point} }
     }
 
     val maxScoreByPoint = movePushScores.map { it.max() }
@@ -1130,7 +1141,7 @@ private fun selectPivotSolver(
         return ourPushes[0]
     }
 
-    probablyPrintScores(enemyPushes, OUR_SIZE, ourPushes, ENEMY_SIZE)
+    probablyPrintScores(ourPushes, enemyPushes)
 
     val result = solvePivot(ENEMY_SIZE, OUR_SIZE)
 
@@ -1191,23 +1202,25 @@ private fun selectPivotSolver(
 }
 
 private fun probablyPrintScores(
-    enemyPushes: List<OnePush>,
-    OUR_SIZE: Int,
-    ourPushes: List<OnePush>,
-    ENEMY_SIZE: Int
+    ourActions: List<*>,
+    enemyActions: List<*>,
+    actionToStringSize: Int = 2
 ) {
     if (printScores) {
+        val OUR_SIZE = ourActions.size
+        val ENEMY_SIZE = enemyActions.size
+
         stringBuilder.clear()
 
         stringBuilder.append("\n#our\\enemy | ")
-        enemyPushes.joinTo(stringBuilder, " | ")
+        enemyActions.joinTo(stringBuilder, " | ")
         stringBuilder.append("\n")
         for (j in (0 until OUR_SIZE)) {
             stringBuilder.append("#       ")
-            stringBuilder.append(ourPushes[j])
+            stringBuilder.append(ourActions[j])
             stringBuilder.append(" | ")
             for (i in (0 until ENEMY_SIZE)) {
-                stringBuilder.append((100 * a[i][j]).toInt().toString().padStart(2))
+                stringBuilder.append((100 * a[i][j]).toInt().toString().padStart(actionToStringSize))
                 stringBuilder.append(" | ")
             }
             stringBuilder.append("\n")
@@ -1916,7 +1929,6 @@ data class GameBoard(val bitBoard: BitBoard) {
     operator fun get(point: Point) = bitBoard[point]
 
     fun findPaths(player: Player, quests: Int): List<PathElem> {
-        if (cachedPaths[player.playerId] == null) {
             fun coordInVisited(newPoint: Point, newItemsSet: Int): Int {
                 val x = newPoint.x
                 val y = newPoint.y
@@ -1981,9 +1993,9 @@ data class GameBoard(val bitBoard: BitBoard) {
                             continue
                         }
                         val newPoint = pathElem.point.move(direction)
-                        val item = bitBoard[newPoint].item
-                        val newItems = if (item > 0 && quests[item]) {
-                            pathElem.itemsTakenSet.set(item)
+                        val field = bitBoard[newPoint]
+                        val newItems = if (field.containsQuestItem(player.playerId, quests)) {
+                            pathElem.itemsTakenSet.set(field.item.absoluteValue)
                         } else {
                             pathElem.itemsTakenSet
                         }
@@ -2003,9 +2015,7 @@ data class GameBoard(val bitBoard: BitBoard) {
                 front = newFront
             }
 
-            cachedPaths[player.playerId] = result
-        }
-        return cachedPaths[player.playerId]!!
+            return result
     }
 
     fun push(push: OnePush, player: Player): GameBoard {
@@ -2304,6 +2314,8 @@ data class Point private constructor(val x: Int, val y: Int) {
         result = 31 * result + y
         return result
     }
+
+    override fun toString(): String = "($x,$y)"
 
 
     companion object {
