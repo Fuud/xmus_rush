@@ -2497,6 +2497,7 @@ class Player(
             numPlayerCards = numPlayerCards - takenCount
             alreadyTakenQuests = alreadyTakenQuests or quests
             currentQuests = (currentQuests and quests.inv()) or newQuests
+            currentQuestsCount = currentQuests.bitCount()
             lastQuestIdx = lastQuestIdx + takenCount
         }
     }
