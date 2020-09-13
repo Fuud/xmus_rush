@@ -188,6 +188,11 @@ val allPushScores = DoubleArray(49 * 49 * 28 * 28)
 val allPushScoresZeros = DoubleArray(49 * 49 * 28 * 28)
 val ourPointsSumScore = DoubleArray(49)
 
+val moveScores = Point.points
+    .map { it to 0.0 }
+    .toMap().toMutableMap()
+val movePushScores = Array(49) { DoubleArray(28) }
+
 
 var lastBoard: GameBoard? = null
 var lastBoardAndElves: BoardAndElves? = null
@@ -502,6 +507,10 @@ fun findBestMove(
 
             allPushScores.fill(0.0, 0, OUR_ENDS_SIZE*ENEMY_ENDS_SIZE*28*28)
             ourPointsSumScore.fill(0.0)
+            ourEnds.forEach { moveScores[it] = 0.0 }
+            for (p in ourEnds) {
+                movePushScores[p.idx].fill(0.0)
+            }
 
             var count = 0
             var aborted = false
@@ -521,7 +530,7 @@ fun findBestMove(
                         val newBoard = gameBoard.push(pushes)
 
                         for (ourPoint in ourEnds) {
-                            for (enemyPoint in enemyEnds) {
+//                            for (enemyPoint in enemyEnds) {
                                 if (System.nanoTime() - startTime > timeLimit && count > 0) {
                                     log("stop computePushes, computed $count pushes")
                                     aborted = true
@@ -529,27 +538,58 @@ fun findBestMove(
                                 }
                                 we.copy(playerX = ourPoint.x, playerY = ourPoint.y) { we ->
                                     we.push(pushes, gameBoard) { we ->
-                                        enemy.copy(playerX = enemyPoint.x, playerY = enemyPoint.y) { enemy ->
+//                                        enemy.copy(playerX = enemyPoint.x, playerY = enemyPoint.y) { enemy ->
                                             enemy.push(pushes, gameBoard) { enemy ->
                                                 val score = PushAndMove.calcScore(pushes, newBoard, we, enemy)
-                                                allPushScores[
-                                                        idx(ourPoint, enemyPoint, pushes.ourPush, pushes.enemyPush)
-                                                ] = score
+//                                                allPushScores[
+//                                                        idx(ourPoint, enemyPoint, pushes.ourPush, pushes.enemyPush)
+//                                                ] = score
                                                 ourPointsSumScore[ourPoint.idx] += score
+                                                moveScores[ourPoint] = moveScores[ourPoint]!! + score
+                                                movePushScores[ourPoint.idx][pushes.ourPush.idx] += score
                                             }
                                         }
-                                    }
-                                }
+//                                    }
+//                                }
                             }
                         }
                     }
                 }
             }
 
-            val bestPoint = ourEnds.maxBy { ourPointsSumScore[it.idx] }!!
+            val maxScoreByPoint = movePushScores.map { it.max() }
 
-            val bestPath = ourBestPaths.find { it.point == bestPoint }
+            val scoreComparator = compareBy<PathElem> { pathElem ->
+                moveScores[pathElem.point]!!
+            }.thenComparing { pathElem ->
+                max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
+            }.thenComparing { pathElem ->
+                if (gameBoard.bitBoard.ourField().containsQuestItem(we.playerId, we.currentQuests)) {
+                    val (x, y) = pathElem.point
+                    if ((x == 0 || x == 6) && (y == 0 || y == 6)) {
+                        1
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                }
+            }.thenComparing { pathElem ->
+                Integer.bitCount(gameBoard.bitBoard[pathElem.point].tile)
+            }
+            val pathsComparator = compareBy<PathElem> { pathElem ->
+                Integer.bitCount(pathElem.itemsTakenSet)
+            }.thenComparing { pathElem ->
+                maxScoreByPoint[pathElem.point.idx]!!
+            }.thenComparing(scoreComparator)
 
+            val bestPath = ourPaths.maxWith(pathsComparator)
+            val maxByAverageScore = ourPaths.maxWith(compareBy<PathElem> { pathElem ->
+                Integer.bitCount(pathElem.itemsTakenSet)
+            }.thenComparing(scoreComparator))
+            if (maxByAverageScore?.point != bestPath?.point) {
+                log("MoveCandidate by average score ${maxByAverageScore?.point} differ from current best ${bestPath?.point}")
+            }
             probablyLogCompilation()
             bestPath
         }
