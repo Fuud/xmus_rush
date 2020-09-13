@@ -227,12 +227,12 @@ fun performGame() {
         repeat(150) { step ->
             pushesRemain = (150 - step) / 2 - 1
 
-            val start = System.nanoTime()
             log("step $step")
 
             val (turnType, gameBoard, we, enemy) = readInput(input)
+            val start = System.nanoTime()
             if (step == 0) {
-                val fields: MutableList<BitField> = Point.points.flatten()
+                val fields: MutableList<BitField> = Point.points
                     .map { p -> gameBoard.bitBoard[p] }
                     .toMutableList()
                 fields.add(gameBoard.bitBoard.ourField())
@@ -456,8 +456,6 @@ object Quests {
     }
 }
 
-inline fun idx(ourPoint: Point, enemyPoint: Point, ourPush: OnePush, enemyPush: OnePush) =
-    ((ourPoint.idx * 49 + enemyPoint.idx) * 28 + ourPush.idx) * 28 + enemyPush.idx
 
 fun findBestMove(
     gameBoard: GameBoard,
@@ -476,7 +474,8 @@ fun findBestMove(
     val ourBestPaths = ourPaths.filter { Integer.bitCount(it.itemsTakenSet) == ourItemsTakenSize }
     val ourEnds = ourBestPaths
         .map { it.point }.toHashSet()
-    if (ourEnds.size == 1) {
+    val OUR_ENDS_SIZE = ourEnds.size
+    if (OUR_ENDS_SIZE == 1) {
         return ourPaths.find { Integer.bitCount(it.itemsTakenSet) == ourItemsTakenSize }!!
     }
 
@@ -486,6 +485,12 @@ fun findBestMove(
 
     val enemyEnds = enemyPaths.filter { Integer.bitCount(it.itemsTakenSet) == enemyItemsTakenSize }
         .map { it.point }.toHashSet()
+
+    val ENEMY_ENDS_SIZE = enemyEnds.size
+    log("move space is $OUR_ENDS_SIZE*$ENEMY_ENDS_SIZE = ${OUR_ENDS_SIZE * ENEMY_ENDS_SIZE}")
+
+    fun idx(ourPoint: Point, enemyPoint: Point, ourPush: OnePush, enemyPush: OnePush) =
+        ((ourPoint.idx * ENEMY_ENDS_SIZE + enemyPoint.idx) * 28 + ourPush.idx) * 28 + enemyPush.idx
 
     return we.takeQuests(ourItemsTaken) { we ->
 
@@ -497,7 +502,7 @@ fun findBestMove(
                 log("Our next quests: $ourQuests;  enemy next quests: $enemyQuests}")
             }
 
-            System.arraycopy(allPushScoresZeros, 0, allPushScores, 0, allPushScores.size)
+            allPushScores.fill(0.0, 0, OUR_ENDS_SIZE*ENEMY_ENDS_SIZE*28*28)
             ourPointsSumScore.fill(0.0)
 
             var count = 0
@@ -530,7 +535,7 @@ fun findBestMove(
                                             enemy.push(pushes, gameBoard) { enemy ->
                                                 val score = PushAndMove.calcScore(pushes, newBoard, we, enemy)
                                                 allPushScores[
-                                                        idx(ourPoint,enemyPoint,pushes.ourPush,pushes.enemyPush)
+                                                        idx(ourPoint, enemyPoint, pushes.ourPush, pushes.enemyPush)
                                                 ] = score
                                                 ourPointsSumScore[ourPoint.idx] += score
                                             }
@@ -2113,10 +2118,10 @@ data class Point private constructor(val x: Int, val y: Int) {
 
 
     companion object {
-        val points = (0..6).map { x ->
-            (0..6).map { y ->
-                Point(x, y)
-            }
+        val points = Array(49) { idx ->
+            val x = idx % 7
+            val y = idx / 7
+            Point(x, y)
         }
 
         private val point_minus2 = Point(-2, -2)
@@ -2126,16 +2131,16 @@ data class Point private constructor(val x: Int, val y: Int) {
             (0..6).forEach { x ->
                 (0..6).forEach { y ->
                     if (x > 0) {
-                        points[x][y].left = points[x - 1][y]
+                        point(x, y).left = point(x - 1, y)
                     }
                     if (x < 6) {
-                        points[x][y].right = points[x + 1][y]
+                        point(x, y).right = point(x + 1, y)
                     }
                     if (y > 0) {
-                        points[x][y].up = points[x][y - 1]
+                        point(x, y).up = point(x, y - 1)
                     }
                     if (y < 6) {
-                        points[x][y].down = points[x][y + 1]
+                        point(x, y).down = point(x, y + 1)
                     }
                 }
             }
@@ -2143,7 +2148,7 @@ data class Point private constructor(val x: Int, val y: Int) {
 
         fun point(x: Int, y: Int): Point {
             return when {
-                x >= 0 -> points[x][y]
+                x >= 0 -> points[y*7+x]
                 x == -2 -> point_minus2
                 else -> point_minus1
             }
@@ -2204,7 +2209,12 @@ class Player(
     )
 
 
-    internal inline fun <T> push(pushPlayerId: Int, push: OnePush, board: GameBoard, crossinline block: (Player) -> T): T {
+    internal inline fun <T> push(
+        pushPlayerId: Int,
+        push: OnePush,
+        board: GameBoard,
+        crossinline block: (Player) -> T
+    ): T {
         var x = playerX
         var y = playerY
         val firstPushField = if (pushPlayerId == 0) board.bitBoard.ourField() else board.bitBoard.enemyField()
