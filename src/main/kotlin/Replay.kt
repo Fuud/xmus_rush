@@ -209,7 +209,7 @@ object ComputeProbabilities {
                 val input = Scanner(file)
                 val conditions = readInput(input)
                 val board = conditions.gameBoard
-                val fields: MutableList<BitField> = Point.points.flatten()
+                val fields: MutableList<BitField> = Point.points
                     .map { p -> board.bitBoard[p] }
                     .toMutableList()
                 fields.add(board.bitBoard.ourField())
@@ -332,14 +332,16 @@ object CountStop {
                 if (firstLine < 0) {
                     emptyList<Pair<String, String>>()
                 } else {
-                    file.readLines()
-                        .drop(firstLine)
-                        .mapIndexed { index, line -> "${file.name}:${index + firstLine}" to line }
-                        .filter { it.second.contains("stop computePushes") }
-                        .map { (descr, line) -> descr to line }
+                    file.readText()
+                        .split("step")
+//                        .drop(6)
+                        .filter { it.contains("stop computePushes") }
+                        .map { "${file.name} ${it.lines().first()} " +
+                                "${it.lines().first { it.contains("stop") }} " +
+                                "${it.lines().first{it.contains("move space")}} " +
+                                "${it.lines().firstOrNull{it.contains("Compilation")}} " }
                 }
             }
-            .sortedByDescending { it.second }
             .forEach {
                 println(it)
             }

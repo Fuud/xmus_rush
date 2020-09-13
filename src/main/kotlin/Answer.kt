@@ -495,17 +495,14 @@ fun findBestMove(
     fun idx(ourPoint: Point, enemyPoint: Point, ourPush: OnePush, enemyPush: OnePush) =
         ((ourPoint.idx * ENEMY_ENDS_SIZE + enemyPoint.idx) * 28 + ourPush.idx) * 28 + enemyPush.idx
 
-    return we.takeQuests(ourItemsTaken) { we ->
-
+    we.takeQuests(ourItemsTaken) { we ->
         enemy.takeQuests(enemyItemsTaken) { enemy ->
-
             run {
                 val ourQuests = we.currentQuests.indexesToNames()
                 val enemyQuests = enemy.currentQuests.indexesToNames()
                 log("Our next quests: $ourQuests;  enemy next quests: $enemyQuests}")
             }
 
-            allPushScores.fill(0.0, 0, OUR_ENDS_SIZE*ENEMY_ENDS_SIZE*28*28)
             ourPointsSumScore.fill(0.0)
             ourEnds.forEach { moveScores[it] = 0.0 }
             for (p in ourEnds) {
@@ -514,6 +511,7 @@ fun findBestMove(
 
             var count = 0
             var aborted = false
+
             for (pushes in Pushes.allPushes) {
                 if (System.nanoTime() - startTime > timeLimit && count > 0) {
                     log("stop computePushes, computed $count pushes")
@@ -525,76 +523,69 @@ fun findBestMove(
                     continue
                 }
 
-                we.push(pushes, gameBoard) { we ->
-                    enemy.push(pushes, gameBoard) { enemy ->
-                        val newBoard = gameBoard.push(pushes)
-
-                        for (ourPoint in ourEnds) {
-//                            for (enemyPoint in enemyEnds) {
-                                if (System.nanoTime() - startTime > timeLimit && count > 0) {
-                                    log("stop computePushes, computed $count pushes")
-                                    aborted = true
-                                    break
-                                }
-                                we.copy(playerX = ourPoint.x, playerY = ourPoint.y) { we ->
-                                    we.push(pushes, gameBoard) { we ->
-//                                        enemy.copy(playerX = enemyPoint.x, playerY = enemyPoint.y) { enemy ->
-                                            enemy.push(pushes, gameBoard) { enemy ->
-                                                val score = PushAndMove.calcScore(pushes, newBoard, we, enemy)
-//                                                allPushScores[
-//                                                        idx(ourPoint, enemyPoint, pushes.ourPush, pushes.enemyPush)
-//                                                ] = score
-                                                ourPointsSumScore[ourPoint.idx] += score
-                                                moveScores[ourPoint] = moveScores[ourPoint]!! + score
-                                                movePushScores[ourPoint.idx][pushes.ourPush.idx] += score
-                                            }
-                                        }
-//                                    }
-//                                }
-                            }
+                val newBoard = gameBoard.push(pushes)
+                enemy.push(pushes, gameBoard) { enemy ->
+                    for (ourPoint in ourEnds) {
+                        if (System.nanoTime() - startTime > timeLimit && count > 0) {
+                            log("stop computePushes, computed $count pushes")
+                            aborted = true
+                            break
+                        }
+                        we.push(
+                            startX = ourPoint.x,
+                            startY = ourPoint.y,
+                            pushes = pushes,
+                            gameBoard = gameBoard
+                        ) { we ->
+                            val score = PushAndMove.calcScore(pushes, newBoard, we, enemy)
+                            ourPointsSumScore[ourPoint.idx] += score
+                            moveScores[ourPoint] = moveScores[ourPoint]!! + score
+                            movePushScores[ourPoint.idx][pushes.ourPush.idx] += score
                         }
                     }
                 }
             }
-
-            val maxScoreByPoint = movePushScores.map { it.max() }
-
-            val scoreComparator = compareBy<PathElem> { pathElem ->
-                moveScores[pathElem.point]!!
-            }.thenComparing { pathElem ->
-                max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
-            }.thenComparing { pathElem ->
-                if (gameBoard.bitBoard.ourField().containsQuestItem(we.playerId, we.currentQuests)) {
-                    val (x, y) = pathElem.point
-                    if ((x == 0 || x == 6) && (y == 0 || y == 6)) {
-                        1
-                    } else {
-                        0
-                    }
-                } else {
-                    0
-                }
-            }.thenComparing { pathElem ->
-                Integer.bitCount(gameBoard.bitBoard[pathElem.point].tile)
-            }
-            val pathsComparator = compareBy<PathElem> { pathElem ->
-                Integer.bitCount(pathElem.itemsTakenSet)
-            }.thenComparing { pathElem ->
-                maxScoreByPoint[pathElem.point.idx]!!
-            }.thenComparing(scoreComparator)
-
-            val bestPath = ourPaths.maxWith(pathsComparator)
-            val maxByAverageScore = ourPaths.maxWith(compareBy<PathElem> { pathElem ->
-                Integer.bitCount(pathElem.itemsTakenSet)
-            }.thenComparing(scoreComparator))
-            if (maxByAverageScore?.point != bestPath?.point) {
-                log("MoveCandidate by average score ${maxByAverageScore?.point} differ from current best ${bestPath?.point}")
-            }
-            probablyLogCompilation()
-            bestPath
         }
     }
+
+    val maxScoreByPoint = movePushScores.map { it.max() }
+
+    val scoreComparator = compareBy<PathElem> { pathElem ->
+        moveScores[pathElem.point]!!
+    }.thenComparing { pathElem ->
+        max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
+    }.thenComparing { pathElem ->
+        if (gameBoard.bitBoard.ourField().containsQuestItem(we.playerId, we.currentQuests)) {
+            val (x, y) = pathElem.point
+            if ((x == 0 || x == 6) && (y == 0 || y == 6)) {
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    }.thenComparing { pathElem ->
+        Integer.bitCount(gameBoard.bitBoard[pathElem.point].tile)
+    }
+    val pathsComparator = compareBy<PathElem> { pathElem ->
+        Integer.bitCount(pathElem.itemsTakenSet)
+    }.thenComparing { pathElem ->
+        maxScoreByPoint[pathElem.point.idx]!!
+    }.thenComparing(scoreComparator)
+
+    val bestPath = ourPaths.maxWith(pathsComparator)
+    val maxByAverageScore = ourPaths.maxWith(compareBy<PathElem> { pathElem ->
+        Integer.bitCount(pathElem.itemsTakenSet)
+    }.thenComparing(scoreComparator))
+    if (maxByAverageScore?.point != bestPath?.point) {
+        log("MoveCandidate by average score ${maxByAverageScore?.point} differ from current best ${bestPath?.point}")
+    }
+    probablyLogCompilation()
+    return bestPath
+
 }
+
 
 private fun processPreviousPush(
     gameBoard: GameBoard,
@@ -1370,12 +1361,12 @@ fun computePushes(
             enemy.push(pushes, gameBoard) { enemyPlayer ->
                 val newBoard = gameBoard.push(pushes)
                 val useCollisionAtScore = previousPushesAtPosition.none { it.ourPush.collision(pushes.ourPush) }
-        val pushAndMove = PushAndMove(
+                val pushAndMove = PushAndMove(
                     pushes = pushes,
                     board = newBoard,
                     ourPlayer = ourPlayer,
                     enemyPlayer = enemyPlayer,
-            useCollisionAtScore = useCollisionAtScore
+                    useCollisionAtScore = useCollisionAtScore
                 )
                 result.add(pushAndMove)
             }
@@ -2267,7 +2258,7 @@ data class Point private constructor(val x: Int, val y: Int) {
 
         fun point(x: Int, y: Int): Point {
             return when {
-                x >= 0 -> points[y*7+x]
+                x >= 0 -> points[y * 7 + x]
                 x == -2 -> point_minus2
                 else -> point_minus1
             }
@@ -2378,6 +2369,19 @@ class Player(
 
     internal inline fun <T> push(pushes: Pushes, gameBoard: GameBoard, crossinline block: (Player) -> T): T {
         return copy {
+            it.push_inPlace(pushes, gameBoard)
+            block(it)
+        }
+    }
+
+    internal inline fun <T> push(
+        startX: Int,
+        startY: Int,
+        pushes: Pushes,
+        gameBoard: GameBoard,
+        crossinline block: (Player) -> T
+    ): T {
+        return copy(playerX = startX, playerY = startY) {
             it.push_inPlace(pushes, gameBoard)
             block(it)
         }
