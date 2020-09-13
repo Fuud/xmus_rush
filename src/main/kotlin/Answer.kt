@@ -970,7 +970,7 @@ class PushAndMove(
     useCollisionAtScore: Boolean = false
 ) {
 
-    val score: Double = calcScore(pushes, board, ourPlayer, enemyPlayer)
+    val score: Double = calcScore(pushes, board, ourPlayer, enemyPlayer, useCollisionAtScore)
 
     companion object {
         fun calcScore(
