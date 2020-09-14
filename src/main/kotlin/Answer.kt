@@ -259,6 +259,7 @@ fun performGame() {
                     log("!unknown $key")
                     initProbabilities(defaultP)
                 }
+                fingerprints.clear()
             }
 
             if (turnType == 0) {
@@ -469,7 +470,7 @@ fun findBestMove(
 ): PathElem? {
     log("findBestMove")
     val startTime = System.nanoTime()
-    val timeLimit = TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 42)
+    val timeLimit = if (noTimeLimit) Long.MAX_VALUE else TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 52)
 
     val ourPaths = gameBoard.findPaths(we, we.currentQuests)
     val ourItemsTaken = ourPaths.maxWith(compareBy { Integer.bitCount(it.itemsTakenSet) })!!.itemsTakenSet
@@ -539,8 +540,8 @@ fun findBestMove(
 
                         for (enemyPoint in enemyEnds) {
                             enemy.push(
-                                startX = ourPoint.x,
-                                startY = ourPoint.y,
+                                startX = enemyPoint.x,
+                                startY = enemyPoint.y,
                                 pushes = pushes,
                                 gameBoard = gameBoard
                             ) { enemy ->
@@ -1113,6 +1114,7 @@ val a = Array(28) { DoubleArray(28) { 0.0 } } // interior[column][row]
 val stringBuilder = StringBuilder(10_000)
 
 private val printScores = java.lang.Boolean.getBoolean("printScores")
+private val noTimeLimit = java.lang.Boolean.getBoolean("noTimeLimit")
 
 //pivot method from https://www.math.ucla.edu/~tom/Game_Theory/mat.pdf
 private fun selectPivotSolver(
@@ -2890,4 +2892,4 @@ object Tweaks {
 
 //we counted we counted our little fingers were tired
 // @formatter:off
-private val fingerprints: Map<Fingerprint, DoubleArray> = emptyMap()
+private val fingerprints: MutableMap<Fingerprint, DoubleArray> = mutableMapOf()

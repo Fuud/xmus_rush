@@ -3,7 +3,7 @@ import java.io.File
 fun main() {
     val text = File("src/main/kotlin/Answer.kt").readText()
 
-    val textWithFP = text.replace("private val fingerprints: Map<Fingerprint, DoubleArray> = emptyMap()", fingerprintsTxt)
+    val textWithFP = text.replace("private val fingerprints: MutableMap<Fingerprint, DoubleArray> = mutableMapOf()", fingerprintsTxt)
 
     val compacted = textWithFP
         .replace("\\r*\\n\\r*\\n*".toRegex(RegexOption.MULTILINE), "\n")
@@ -22,10 +22,10 @@ fun main() {
 }
 
 val fingerprintsTxt = """
-private val fingerprints: Map<Fingerprint, DoubleArray> = run {
+private val fingerprints: MutableMap<Fingerprint, DoubleArray> = run {
 fun da(vararg e: Double) = doubleArrayOf(*e)
 fun fp(vq: Byte, hq: Byte, v: Byte, h: Byte) = Fingerprint(vq, hq, v, h)    
-mapOf(
+mutableMapOf(
 fp(20, 28, 58, 58) to da(0.6700451, 0.1357889, 0.0114748, 0.0286995, 0.0026203, 2.825E-4),
 fp(20, 30, 48, 70) to da(0.6290363, 0.1465372, 0.015452, 0.0358876, 0.0041706, 5.861E-4),
 fp(20, 30, 54, 62) to da(0.6629998, 0.13738785, 0.01242025, 0.0297069, 0.0029437, 3.562E-4),
