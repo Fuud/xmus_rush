@@ -1426,7 +1426,7 @@ data class DomainInfo(
 
     val size: Int = java.lang.Long.bitCount(domainBits)
     val hasAccessToBorder = domainBits.and(BORDER) != 0L
-    val tilePathsCount = twoPathsTileCount + threePathsTileCount + fourPathsTileCount
+    val tilePathsCount = 2 * twoPathsTileCount + 3 * threePathsTileCount + 4 * fourPathsTileCount
 
     companion object {
         val UP_BORDER: Long =
@@ -1964,10 +1964,18 @@ data class GameBoard(val bitBoard: BitBoard) {
             }
         }
 
-        val spaceScore = ourDomain.tilePathsCount - enemyDomain.tilePathsCount
+        val spaceScoreMax:Int
+        val spaceScore:Int
+        if (Tweaks.useRoadsForSecondaryScore) {
+            spaceScore = ourDomain.tilePathsCount - enemyDomain.tilePathsCount
+            spaceScoreMax = 115
+        } else {
+            spaceScore = ourDomain.size - enemyDomain.size
+            spaceScoreMax = 48
+        }
         val ourHandScore = PushSelectors.itemOnHandScore(ourPlayer, ourDomain, ourFieldOnHand)
         val enemyHandScore = PushSelectors.itemOnHandScore(enemyPlayer, enemyDomain, enemyFieldOnHand)
-        val secondaryScore = ((spaceScore + (ourHandScore - enemyHandScore) * 25.0)) / (150 + 25)
+        val secondaryScore = ((spaceScore + (ourHandScore - enemyHandScore) * 25.0)) / (spaceScoreMax + 25)
 
         val pushesRemain = if (collision && numberOfDraws != 0) {
             9 - numberOfDraws
@@ -2652,11 +2660,6 @@ object Items {
     val NO_ITEM = 0
 }
 
-object Tweaks {
-    val scoreCollisionOnlyForPreviousPushes = false
-    val nearStrategiesThreshold = 1.0
-}
-
 //we counted we counted our little fingers were tired
 // @formatter:off
 private val fingerprints: Map<Fingerprint, DoubleArray> = run {
@@ -3016,4 +3019,10 @@ fp(22,34,62,54)to da(0.6534019,0.1384729,0.0145824,0.0307797,0.0035497,5.196E-4)
 fp(26,36,40,76)to da(0.6017983,0.1500132,0.0207993,0.0392045,0.0060195,0.0011462),
 fp(24,34,52,64)to da(0.6425185,0.1416027,0.0153853,0.0327583,0.0039324,6.011E-4)
 )
+}
+
+object Tweaks {
+    val scoreCollisionOnlyForPreviousPushes = false
+    val nearStrategiesThreshold = 1.0
+    val useRoadsForSecondaryScore = false
 }
