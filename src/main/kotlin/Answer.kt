@@ -81,8 +81,8 @@ enum class RepetitionType {
     UNKNOWN
 }
 
-val drawRepetitions = Array<RepetitionType>(11) { UNKNOWN }
-val nonDrawRepetitions = Array<RepetitionType>(150) { UNKNOWN }
+val drawRepetitions = Array(11) { UNKNOWN }
+val nonDrawRepetitions = Array(150) { UNKNOWN }
 
 val drawRepetitionsStr: String
     get() {
@@ -665,17 +665,8 @@ private fun processPreviousPush(
             }
         }
 
-        run {
-            var foundRandom = false
-            for (i in drawRepetitions.indices) {
-                if (drawRepetitions[i] == RANDOM_MOVE){
-                    foundRandom = true
-                }
-                if (drawRepetitions[i] != UNKNOWN && foundRandom){
-                    drawRepetitions[i] = RANDOM_MOVE
-                }
-            }
-        }
+        unifyRepetitions(drawRepetitions)
+        unifyRepetitions(nonDrawRepetitions)
 
         val score =
             gameBoard.push(lastPush, enemy).score(
@@ -697,6 +688,18 @@ private fun processPreviousPush(
             log("! $score >= $oppositeScore deduct enemy ${lastPush.opposite}")
             allBoards.computeIfAbsent(lastBoardAndElves) { _ -> mutableListOf() }
                 .add(Pushes(lastPush, lastPush.opposite))
+        }
+    }
+}
+
+private fun unifyRepetitions(repetitions: Array<RepetitionType>) {
+    var foundRandom = false
+    for (i in repetitions.indices) {
+        if (repetitions[i] == RANDOM_MOVE) {
+            foundRandom = true
+        }
+        if (repetitions[i] != UNKNOWN && foundRandom) {
+            repetitions[i] = RANDOM_MOVE
         }
     }
 }
@@ -1241,9 +1244,16 @@ private fun filterOutPushes(
                 type
             }
         } else {
-            val type = nonDrawRepetitions[prevEnemyPushes.size]
-            log("enemy type $type")
-            type
+            val numberOfRepeats = prevPushesAtThisPosition.filterNot { it.collision() }.size
+            if (nonDrawRepetitions[numberOfRepeats] == UNKNOWN) {
+                val type = nonDrawRepetitions[numberOfRepeats -1]
+                log("I guess that enemy type is $type")
+                type
+            } else {
+                val type = nonDrawRepetitions[numberOfRepeats]
+                log("enemy type $type")
+                type
+            }
         }
         val weLose = we.numPlayerCards > enemy.numPlayerCards
         val excludeOur = weLose
@@ -1964,18 +1974,21 @@ data class GameBoard(val bitBoard: BitBoard) {
             }
         }
 
-        val spaceScoreMax:Int
+        val maxSpaceScore:Int
         val spaceScore:Int
+        val maxHandScore:Int
         if (Tweaks.useRoadsForSecondaryScore) {
             spaceScore = ourDomain.tilePathsCount - enemyDomain.tilePathsCount
-            spaceScoreMax = 115
+            maxSpaceScore = 115
+            maxHandScore = 62
         } else {
             spaceScore = ourDomain.size - enemyDomain.size
-            spaceScoreMax = 48
+            maxSpaceScore = 48
+            maxHandScore = 25
         }
         val ourHandScore = PushSelectors.itemOnHandScore(ourPlayer, ourDomain, ourFieldOnHand)
         val enemyHandScore = PushSelectors.itemOnHandScore(enemyPlayer, enemyDomain, enemyFieldOnHand)
-        val secondaryScore = ((spaceScore + (ourHandScore - enemyHandScore) * 25.0)) / (spaceScoreMax + 25)
+        val secondaryScore = ((spaceScore + (ourHandScore - enemyHandScore) * maxHandScore)).toDouble() / (maxSpaceScore + maxHandScore)
 
         val pushesRemain = if (collision && numberOfDraws != 0) {
             9 - numberOfDraws
