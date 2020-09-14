@@ -602,7 +602,7 @@ private fun processPreviousPush(
                 val prevMoves = prevMoves
                 if (prevMoves != null) {
                     val sameMoveAsPrev = prevMoves.last().enemyPush == enemyLastPush
-                    val seqLength = prevMoves.size
+                    val seqLength = prevMoves.filterNot { it.collision() }.size
                     nonDrawRepetitions[seqLength] = if (sameMoveAsPrev) {
                         when (nonDrawRepetitions[seqLength]) {
                             UNKNOWN -> SAME_MOVE
@@ -1980,11 +1980,11 @@ data class GameBoard(val bitBoard: BitBoard) {
         if (Tweaks.useRoadsForSecondaryScore) {
             spaceScore = ourDomain.tilePathsCount - enemyDomain.tilePathsCount
             maxSpaceScore = 115
-            maxHandScore = 62
+            maxHandScore = 25
         } else {
             spaceScore = ourDomain.size - enemyDomain.size
             maxSpaceScore = 48
-            maxHandScore = 25
+            maxHandScore = 12
         }
         val ourHandScore = PushSelectors.itemOnHandScore(ourPlayer, ourDomain, ourFieldOnHand)
         val enemyHandScore = PushSelectors.itemOnHandScore(enemyPlayer, enemyDomain, enemyFieldOnHand)
