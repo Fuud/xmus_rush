@@ -1236,22 +1236,22 @@ private fun filterOutPushes(
         val enemyType = if (isDraw) {
             if (drawRepetitions[numberOfDraws] == UNKNOWN) {
                 val type = drawRepetitions[numberOfDraws - 1]
-                log("I guess that enemy type is $type")
+                log("I guess that enemy draw type is $type")
                 type
             } else {
                 val type = drawRepetitions[numberOfDraws]
-                log("enemy type $type")
+                log("enemy draw type $type")
                 type
             }
         } else {
             val numberOfRepeats = prevPushesAtThisPosition.filterNot { it.collision() }.size
             if (nonDrawRepetitions[numberOfRepeats] == UNKNOWN) {
                 val type = nonDrawRepetitions[numberOfRepeats -1]
-                log("I guess that enemy type is $type")
+                log("I guess that enemy cycle type is $type")
                 type
             } else {
                 val type = nonDrawRepetitions[numberOfRepeats]
-                log("enemy type $type")
+                log("enemy cycle type $type")
                 type
             }
         }
