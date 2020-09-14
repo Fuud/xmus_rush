@@ -720,6 +720,7 @@ fun tryFindEnemyPush(fromBoard: GameBoard, toBoard: GameBoard, ourPush: OnePush)
             }
         }
     }
+    log("can not find enemy push for our $ourPush")
     return null // for example if item was taken immediately after push we cannot find enemy move
 }
 
@@ -1245,7 +1246,7 @@ private fun filterOutPushes(
             }
         } else {
             val numberOfRepeats = prevPushesAtThisPosition.filterNot { it.collision() }.size
-            if (nonDrawRepetitions[numberOfRepeats] == UNKNOWN) {
+            if (nonDrawRepetitions[numberOfRepeats] == UNKNOWN && numberOfRepeats > 0) {
                 val type = nonDrawRepetitions[numberOfRepeats -1]
                 log("I guess that enemy cycle type is $type")
                 type
