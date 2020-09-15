@@ -1221,11 +1221,7 @@ private fun filterOutPushes(
     log("filter pushes: enemy nonDraw repetitions: $nonDrawRepetitionsStr")
 
     val prevEnemyPushes = prevPushesAtThisPosition?.flatMap {
-//        if (it.collision()) {
-//            listOf(it.enemyPush, it.enemyPush.opposite)
-//        } else {
         listOf(it.enemyPush)
-//        }
     }
     val prevOurPushes = prevPushesAtThisPosition?.map { it.ourPush }
 
@@ -1234,16 +1230,25 @@ private fun filterOutPushes(
     } else {
         prevOurPushes!!
         val isDraw = numberOfDraws != 0
+        val weLose = we.numPlayerCards > enemy.numPlayerCards
         val enemyType = if (isDraw) {
+            var type :RepetitionType
             if (drawRepetitions[numberOfDraws] == UNKNOWN) {
-                val type = drawRepetitions[numberOfDraws - 1]
+                type = drawRepetitions[numberOfDraws - 1]
                 log("I guess that enemy draw type is $type")
-                type
             } else {
-                val type = drawRepetitions[numberOfDraws]
+                type = drawRepetitions[numberOfDraws]
                 log("enemy draw type $type")
-                type
             }
+            if (weLose && type == RANDOM_MOVE && numberOfDraws > 2
+                && drawRepetitions[numberOfDraws - 1] == RANDOM_MOVE
+                && drawRepetitions[numberOfDraws - 2] == RANDOM_MOVE
+                && drawRepetitions[numberOfDraws - 3] == RANDOM_MOVE
+            ) {
+                log("enemy is random but we are losing and have $numberOfDraws draws, so let's assume SAME_MOVE type")
+                type = SAME_MOVE
+            }
+            type
         } else {
             val numberOfRepeats = prevPushesAtThisPosition.filterNot { it.collision() }.size
             if (nonDrawRepetitions[numberOfRepeats] == UNKNOWN && numberOfRepeats > 0) {
@@ -1256,7 +1261,6 @@ private fun filterOutPushes(
                 type
             }
         }
-        val weLose = we.numPlayerCards > enemy.numPlayerCards
         val excludeOur = weLose
                 && (numberOfDraws > 2 || numberOfDraws == 0)
                 && enemyType == SAME_MOVE
@@ -3039,5 +3043,5 @@ fp(24,34,52,64)to da(0.6425185,0.1416027,0.0153853,0.0327583,0.0039324,6.011E-4)
 object Tweaks {
     val scoreCollisionOnlyForPreviousPushes = false
     val nearStrategiesThreshold = 1.0
-    val useRoadsForSecondaryScore = false
+    val useRoadsForSecondaryScore = true
 }
