@@ -52,7 +52,7 @@ object Replay {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        val replayId = "487118132"
+        val replayId = "487147667"
 
         val replayFile = File("replays/$replayId.txt")
 
@@ -305,7 +305,7 @@ object ComputeProbabilities {
                 ourQuest,
                 enemyQuest
             )
-            oe[ourD.getOurQuestsCount()][enemyD.getEnemyQuestsCount()] += 1
+            oe[ourD.getOurQuestsCount][enemyD.getEnemyQuestsCount] += 1
             count++
         }
         return oe

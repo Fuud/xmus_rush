@@ -794,7 +794,7 @@ private fun processPreviousPush(
         }
         val oppositeScore = we.push(enemy.playerId, lastPush.opposite, gameBoard) { we ->
             enemy.push(enemy.playerId, lastPush.opposite, gameBoard) { enemy ->
-                gameBoard.push(lastPush, enemy).score(
+                gameBoard.push(lastPush.opposite, enemy).score(
                     ourPlayer = we,
                     enemyPlayer = enemy,
                     collision = false
@@ -1602,6 +1602,8 @@ data class DomainInfo(
     val size: Int = java.lang.Long.bitCount(domainBits)
     val hasAccessToBorder = domainBits.and(BORDER) != 0L
     val tilePathsCount = twoPathsTileCount + threePathsTileCount + fourPathsTileCount
+    val getOurQuestsCount: Int = Integer.bitCount(ourQuestBits)
+    val getEnemyQuestsCount: Int =  Integer.bitCount(enemyQuestBits)
 
     companion object {
         val UP_BORDER: Long =
@@ -1617,13 +1619,6 @@ data class DomainInfo(
         val BORDER = VERTICAL_BORDER.or(HORIZONTAL_BORDER)
     }
 
-    fun getOurQuestsCount(): Int {
-        return Integer.bitCount(ourQuestBits)
-    }
-
-    fun getEnemyQuestsCount(): Int {
-        return Integer.bitCount(enemyQuestBits)
-    }
 }
 
 data class PathElem(
@@ -2079,8 +2074,8 @@ data class GameBoard(val bitBoard: BitBoard) {
         enemyDomain: DomainInfo = findDomain(enemyPlayer.point, ourPlayer.currentQuests, enemyPlayer.currentQuests)
     ): Double {
 
-        val ourItemRemain = ourPlayer.numPlayerCards - ourDomain.getOurQuestsCount()
-        val enemyItemRemain = enemyPlayer.numPlayerCards - enemyDomain.getEnemyQuestsCount()
+        val ourItemRemain = ourPlayer.numPlayerCards - ourDomain.getOurQuestsCount
+        val enemyItemRemain = enemyPlayer.numPlayerCards - enemyDomain.getEnemyQuestsCount
 
         if (ourItemRemain == 0) {
             if (enemyItemRemain == 0) {
@@ -2111,11 +2106,11 @@ data class GameBoard(val bitBoard: BitBoard) {
         var ourNonQuestItemsCount = 0
         run {
             ourPlayer.takeQuests(ourDomain.ourQuestBits) { nextOurPlayer ->
+                val domainHasNextQuests = (ourDomain.ourItemsBits and nextOurPlayer.currentQuests) != 0
+                if (domainHasNextQuests) {
+                    ourAdditionalQuest = 1
+                }
                 if (nextOurPlayer.currentQuestsCount < min(3, nextOurPlayer.numPlayerCards)) {
-                    val domainHasNextQuests = (ourDomain.ourItemsBits and nextOurPlayer.currentQuests) != 0
-                    if (domainHasNextQuests) {
-                        ourAdditionalQuest = 1
-                    }
                     val quests = nextOurPlayer.alreadyTakenQuests.or(nextOurPlayer.currentQuests)
                     ourNonQuestItemsCount = (ourDomain.ourItemsBits and quests.inv()).bitCount()
                     ourHiddenQuestsCount = nextOurPlayer.numPlayerCards - nextOurPlayer.currentQuestsCount
@@ -2128,11 +2123,11 @@ data class GameBoard(val bitBoard: BitBoard) {
         var enemyNonQuestItemsCount = 0
         run {
             enemyPlayer.takeQuests(enemyDomain.enemyQuestBits) { nextEnemyPlayer ->
+                val domainHasNextQuests = (enemyDomain.enemyItemsBits and nextEnemyPlayer.currentQuests) != 0
+                if (domainHasNextQuests) {
+                    enemyAdditionalQuest = 1
+                }
                 if (nextEnemyPlayer.currentQuestsCount < min(3, nextEnemyPlayer.numPlayerCards)) {
-                    val domainHasNextQuests = (enemyDomain.enemyItemsBits and nextEnemyPlayer.currentQuests) != 0
-                    if (domainHasNextQuests) {
-                        enemyAdditionalQuest = 1
-                    }
                     val quests = nextEnemyPlayer.alreadyTakenQuests.or(nextEnemyPlayer.currentQuests)
                     enemyNonQuestItemsCount = (enemyDomain.enemyItemsBits and quests.inv()).bitCount()
                     enemyHiddenQuestsCount = nextEnemyPlayer.numPlayerCards - nextEnemyPlayer.currentQuestsCount
@@ -2182,9 +2177,9 @@ data class GameBoard(val bitBoard: BitBoard) {
             secondaryScore = secondaryScore
         )
         var result = estimate
-        val weTake = ourDomain.getOurQuestsCount() + ourAdditionalQuest +
+        val weTake = ourDomain.getOurQuestsCount + ourAdditionalQuest +
                 (min(3, ourPlayer.numPlayerCards) - ourPlayer.currentQuestsCount)
-        val enemyTake = enemyDomain.getEnemyQuestsCount() + enemyAdditionalQuest +
+        val enemyTake = enemyDomain.getEnemyQuestsCount + enemyAdditionalQuest +
                 (min(3, enemyPlayer.numPlayerCards) - enemyPlayer.currentQuestsCount)
         if ((weTake > 0 || enemyTake > 0)) {
             var weTakeProbability = 0.0
