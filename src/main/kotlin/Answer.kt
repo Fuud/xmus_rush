@@ -283,7 +283,7 @@ fun performGame() {
                 }
 
                 log("$step pushDuration: ${TimeUnit.NANOSECONDS.toMillis(duration)}")
-                while (System.nanoTime() - start < TimeUnit.MILLISECONDS.toNanos(30)) {
+                while (System.nanoTime() - start < TimeUnit.MILLISECONDS.toNanos(20)) {
                     log("time to sleep")
                     Thread.sleep(10)
                 }
@@ -473,7 +473,7 @@ fun findBestMove(
 ): PathElem? {
     log("findBestMove")
     val startTime = System.nanoTime()
-    val timeLimit = if (noTimeLimit) Long.MAX_VALUE else TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 62)
+    val timeLimit = if (noTimeLimit) Long.MAX_VALUE else TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 55)
 
     val ourPaths = gameBoard.findPaths(we, we.currentQuests)
     val ourItemsTaken = ourPaths.maxWith(compareBy { Integer.bitCount(it.itemsTakenSet) })!!.itemsTakenSet
@@ -579,7 +579,7 @@ fun findBestMove(
                         val score = r(allPushScores[idx(ourPoint, enemyPoint, pushes.ourPush, pushes.enemyPush)])
                         a[pushes.enemyPush.idx][pushes.ourPush.idx] = score
                     }
-                    log("Will solve pivot for ourPoint=$ourPoint enemyPoint=$enemyPoint")
+
                     probablyPrintScores(OnePush.allPushes, OnePush.allPushes)
                     scoreForPoints[ourPoint.idx * 49 + enemyPoint.idx] = solvePivot(28, 28).score
 
@@ -1173,6 +1173,8 @@ private fun selectPivotSolver(
 
         val selection = rand.nextDouble()
 
+        log("score: $score")
+
         log(
             "OurStrategy: ${
                 ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
@@ -1353,8 +1355,6 @@ private fun solvePivot(ENEMY_SIZE: Int, OUR_SIZE: Int): PivotSolverResult {
 
     //step 7
     val resultScore = 1 / corner
-
-    log("resultScore = $resultScore, duration = ${TimeUnit.NANOSECONDS.toMillis(duration)}, pivots = $pivotCount")
 
     val ourStrategy = DoubleArray(OUR_SIZE) { 0.0 }
     val enemyStrategy = DoubleArray(ENEMY_SIZE) { 0.0 }
