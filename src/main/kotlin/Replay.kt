@@ -335,11 +335,12 @@ object CountStop {
                     file.readText()
                         .split("step")
 //                        .drop(6)
-                        .filter { it.contains("stop computePushes") }
+                        .filter { it.contains("stop compute") }
                         .map { "${file.name} ${it.lines().first()} " +
-                                "${it.lines().first { it.contains("stop") }} " +
+                                "${it.lines().firstOrNull { it.contains("stop") }} " +
                                 "${it.lines().first{it.contains("move space")}} " +
-                                "${it.lines().firstOrNull{it.contains("Compilation")}} " }
+                                "${it.lines().firstOrNull{it.contains("Compilation")}} " +
+                                "${it.lines().firstOrNull{it.contains("Move")}} " }
                 }
             }
             .forEach {

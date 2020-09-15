@@ -547,7 +547,7 @@ fun findBestMove(
                     count++
 
                     val newBoard = gameBoardCache[pushes.idx]
-                    enemyPlayersCache[pushes.idx * OUR_ENDS_SIZE + enemyPointIdx].let { enemy ->
+                    enemyPlayersCache[pushes.idx * ENEMY_ENDS_SIZE + enemyPointIdx].let { enemy ->
 
                     for (ourPointIdx in (0 until OUR_ENDS_SIZE)) {
                         val ourPoint = ourEnds[ourPointIdx]
