@@ -1231,8 +1231,9 @@ private fun filterOutPushes(
         prevOurPushes!!
         val isDraw = numberOfDraws != 0
         val weLose = we.numPlayerCards > enemy.numPlayerCards
+        var firstRandomTheSame = false
         val enemyType = if (isDraw) {
-            var type :RepetitionType
+            var type: RepetitionType
             if (drawRepetitions[numberOfDraws] == UNKNOWN) {
                 type = drawRepetitions[numberOfDraws - 1]
                 log("I guess that enemy draw type is $type")
@@ -1240,13 +1241,20 @@ private fun filterOutPushes(
                 type = drawRepetitions[numberOfDraws]
                 log("enemy draw type $type")
             }
-            if (weLose && type == RANDOM_MOVE && numberOfDraws > 2
-                && drawRepetitions[numberOfDraws - 1] == RANDOM_MOVE
-                && drawRepetitions[numberOfDraws - 2] == RANDOM_MOVE
-                && drawRepetitions[numberOfDraws - 3] == RANDOM_MOVE
-            ) {
-                log("enemy is random but we are losing and have $numberOfDraws draws, so let's assume SAME_MOVE type")
-                type = SAME_MOVE
+            if (weLose && type == RANDOM_MOVE && numberOfDraws > 2) {
+                val lastThreeIsRandom = drawRepetitions[numberOfDraws - 1] == RANDOM_MOVE &&
+                        drawRepetitions[numberOfDraws - 2] == RANDOM_MOVE &&
+                        (drawRepetitions[numberOfDraws] == RANDOM_MOVE ||
+                                drawRepetitions[numberOfDraws - 3] == RANDOM_MOVE)
+                if (lastThreeIsRandom) {
+                    log("enemy is random but we are losing and have $numberOfDraws draws, so let's assume SAME_MOVE type")
+                    firstRandomTheSame = (drawRepetitions[numberOfDraws] == RANDOM_MOVE &&
+                            drawRepetitions[numberOfDraws - 3] != RANDOM_MOVE) ||
+                            (numberOfDraws > 3 &&
+                                    drawRepetitions[numberOfDraws] == UNKNOWN &&
+                                    drawRepetitions[numberOfDraws - 4] != RANDOM_MOVE)
+                    type = SAME_MOVE
+                }
             }
             type
         } else {
@@ -1263,7 +1271,7 @@ private fun filterOutPushes(
         }
         val excludeOur = weLose
                 && (numberOfDraws > 2 || numberOfDraws == 0)
-                && enemyType == SAME_MOVE
+                && (enemyType == SAME_MOVE && !firstRandomTheSame)
         if (excludeOur) {
             log("filter out our pushes: $prevOurPushes")
         }
