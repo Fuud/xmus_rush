@@ -1989,7 +1989,8 @@ data class GameBoard(val bitBoard: BitBoard) {
         }
         val ourHandScore = PushSelectors.itemOnHandScore(ourPlayer, ourDomain, ourFieldOnHand)
         val enemyHandScore = PushSelectors.itemOnHandScore(enemyPlayer, enemyDomain, enemyFieldOnHand)
-        val secondaryScore = ((spaceScore + (ourHandScore - enemyHandScore) * maxHandScore)).toDouble() / (maxSpaceScore + maxHandScore)
+        var secondaryScore = ((spaceScore + (ourHandScore - enemyHandScore) * maxHandScore)).toDouble() / (maxSpaceScore + maxHandScore)
+        secondaryScore = Math.signum(secondaryScore) * Math.sqrt(secondaryScore.absoluteValue)
 
         val pushesRemain = if (collision && numberOfDraws != 0) {
             9 - numberOfDraws
