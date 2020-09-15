@@ -189,9 +189,7 @@ val allPushScoresZeros = DoubleArray(49 * 49 * 28 * 28)
 val ourPointsSumScore = DoubleArray(49)
 val scoreForPoints = DoubleArray(49 * 49)
 
-val moveScores = Point.points
-    .map { it to 0.0 }
-    .toMap().toMutableMap()
+val moveScores = DoubleArray(49)
 val movePushScores = Array(49) { DoubleArray(28) }
 
 
@@ -511,7 +509,7 @@ fun findBestMove(
             }
 
             ourPointsSumScore.fill(0.0)
-            ourEnds.forEach { moveScores[it] = 0.0 }
+            ourEnds.forEach { moveScores[it.idx] = 0.0 }
             for (p in ourEnds) {
                 movePushScores[p.idx].fill(0.0)
             }
@@ -554,7 +552,7 @@ fun findBestMove(
                         ourPlayersCache[pushes.idx * OUR_ENDS_SIZE + ourPointIdx].let { we ->
                                 val score = PushAndMove.calcScore(pushes, newBoard, we, enemy)
                                 ourPointsSumScore[ourPoint.idx] += score
-                                moveScores[ourPoint] = moveScores[ourPoint]!! + score
+                                moveScores[ourPoint.idx] += score
                                 movePushScores[ourPoint.idx][pushes.ourPush.idx] += score
                                 allPushScores[idx(ourPoint, enemyPoint, pushes.ourPush, pushes.enemyPush)] = score
                             }
@@ -625,7 +623,7 @@ fun findBestMove(
     val maxScoreByPoint = movePushScores.map { it.max() }
 
     val scoreComparator = compareBy<PathElem> { pathElem ->
-        moveScores[pathElem.point]!!
+        moveScores[pathElem.point.idx]
     }.thenComparing { pathElem ->
         max(2 * abs(pathElem.point.x - 3) + 1, 2 * abs(pathElem.point.y - 3))
     }.thenComparing { pathElem ->
