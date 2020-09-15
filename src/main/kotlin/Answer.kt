@@ -461,8 +461,9 @@ object Quests {
     }
 }
 
-val ourPlayersCache = Array(49) { Player(0, 0, 0, 0, 0, 0, 0) }
-val enemyPlayersCache = Array(49) { Player(0, 0, 0, 0, 0, 0, 0) }
+val ourPlayersCache = Array(49 * Pushes.ALL_PUSHES_SIZE) { Player(0, 0, 0, 0, 0, 0, 0) }
+val enemyPlayersCache = Array(49 * Pushes.ALL_PUSHES_SIZE) { Player(0, 0, 0, 0, 0, 0, 0) }
+val gameBoardCache = Array(Pushes.ALL_PUSHES_SIZE) { GameBoard(BitBoard(LongArray(7), LongArray(2))) }
 
 fun findBestMove(
     gameBoard: GameBoard,
@@ -519,38 +520,38 @@ fun findBestMove(
             var count = 0
 
             for (pushes in Pushes.allPushes) {
-                if (System.nanoTime() - startTime > timeLimit && count > 0) {
-                    log("stop computePushes, computed $count pushes")
-                    aborted = true
-                    break
-                }
-                count++
-
-                val newBoard = gameBoard.push(pushes)
-
-                for (i in (0 until OUR_ENDS_SIZE)){
-                    val point = ourEnds[i]
-                    val player = ourPlayersCache[i]
+                for (pointIdx in (0 until OUR_ENDS_SIZE)) {
+                    val point = ourEnds[pointIdx]
+                    val player = ourPlayersCache[pushes.idx * OUR_ENDS_SIZE + pointIdx]
                     player.copy_inPlace(we, point = point)
                     player.push_inPlace(pushes, gameBoard)
                 }
-                for (i in (0 until ENEMY_ENDS_SIZE)){
-                    val point = enemyEnds[i]
-                    val player = enemyPlayersCache[i]
-                    player.copy_inPlace(we, point = point)
+                for (pointIdx in (0 until ENEMY_ENDS_SIZE)) {
+                    val point = enemyEnds[pointIdx]
+                    val player = enemyPlayersCache[pushes.idx * ENEMY_ENDS_SIZE + pointIdx]
+                    player.copy_inPlace(enemy, point = point)
                     player.push_inPlace(pushes, gameBoard)
                 }
-                for (i in (0 until OUR_ENDS_SIZE)){
+                gameBoardCache[pushes.idx] = gameBoard.push(pushes) //todo: copy in place?
+            }
+
+
+            for (enemyPointIdx in (0 until ENEMY_ENDS_SIZE)) {
+                val enemyPoint = enemyEnds[enemyPointIdx]
+                for (pushes in Pushes.allPushes) {
                     if (System.nanoTime() - startTime > timeLimit && count > 0) {
                         log("stop computePushes, computed $count pushes")
                         aborted = true
                         break
                     }
-                    val ourPoint = ourEnds[i]
-                    ourPlayersCache[i].let { we ->
-                        for (i in (0 until ENEMY_ENDS_SIZE)){
-                            val enemyPoint = enemyEnds[i]
-                            enemyPlayersCache[i].let { enemy ->
+                    count++
+
+                    val newBoard = gameBoardCache[pushes.idx]
+                    enemyPlayersCache[pushes.idx * OUR_ENDS_SIZE + enemyPointIdx].let { enemy ->
+
+                    for (ourPointIdx in (0 until OUR_ENDS_SIZE)) {
+                        val ourPoint = ourEnds[ourPointIdx]
+                        ourPlayersCache[pushes.idx * OUR_ENDS_SIZE + ourPointIdx].let { we ->
                                 val score = PushAndMove.calcScore(pushes, newBoard, we, enemy)
                                 ourPointsSumScore[ourPoint.idx] += score
                                 moveScores[ourPoint] = moveScores[ourPoint]!! + score
@@ -984,43 +985,56 @@ data class OnePush private constructor(val direction: Direction, val rowColumn: 
 }
 
 data class Pushes(val ourPush: OnePush, val enemyPush: OnePush) {
-    companion object {
-        val realAllPushes = (0..6).flatMap { ourRowColumn ->
-            Direction.allDirections
-                .flatMap { ourDirection ->
-                    (0..6).flatMap { enemyRowColumn ->
-                        Direction.allDirections.map { enemyDirection ->
-                            Pushes(
-                                onePush(ourDirection, ourRowColumn),
-                                onePush(enemyDirection, enemyRowColumn)
-                            )
-                        }
-                    }
-                }
-        }
+    val idx = ourPush.idx * 28 + enemyPush.idx
+    val firstPush = if (ourPush.direction.isVertical) {
+        enemyPush
+    } else {
+        ourPush
+    }
+    val secondPush = if (ourPush.direction.isVertical) {
+        ourPush
+    } else {
+        enemyPush
+    }
+    val firstPushIsEnemy = ourPush.direction.isVertical
+    val firstPlayerId = if (firstPushIsEnemy) 1 else 0
+    val secondPlayerId = if (firstPushIsEnemy) 0 else 1
 
-        var allPushes: List<Pushes> = (0..0).flatMap { ourRowColumn ->
-            Direction.allDirections
-                .flatMap { ourDirection ->
-                    (0..0).flatMap { enemyRowColumn ->
-                        Direction.allDirections.map { enemyDirection ->
-                            Pushes(
-                                onePush(ourDirection, ourRowColumn),
-                                onePush(enemyDirection, enemyRowColumn)
-                            )
-                        }
+    val collision = ourPush.collision(enemyPush)
+
+    companion object {
+        val ALL_PUSHES_SIZE = 28*28
+        val realAllPushes = Direction.allDirections.flatMap { ourDirection ->
+            (0..6).flatMap { ourRowColumn ->
+                Direction.allDirections.flatMap { enemyDirection ->
+                    (0..6).map { enemyRowColumn ->
+                        Pushes(
+                            onePush(ourDirection, ourRowColumn),
+                            onePush(enemyDirection, enemyRowColumn)
+                        )
                     }
                 }
-        }
+            }
+        }.toTypedArray()
+
+        var allPushes: Array<Pushes> = Direction.allDirections.flatMap { ourDirection ->
+            (0..0).flatMap { ourRowColumn ->
+                Direction.allDirections.flatMap { enemyDirection ->
+                    (0..0).map { enemyRowColumn ->
+                        Pushes(
+                            onePush(ourDirection, ourRowColumn),
+                            onePush(enemyDirection, enemyRowColumn)
+                        )
+                    }
+                }
+            }
+        }.toTypedArray()
 
         fun installRealPushes() {
             allPushes = realAllPushes
         }
     }
 
-    fun collision(): Boolean {
-        return ourPush.collision(enemyPush)
-    }
 }
 
 class PushAndMove(
@@ -1041,7 +1055,7 @@ class PushAndMove(
             enemyPlayer: Player,
             useCollisionAtScore: Boolean = false
         ): Double {
-            val collision = useCollisionAtScore && pushes.collision()
+            val collision = useCollisionAtScore && pushes.collision
             val ourDomain = board.findDomain(ourPlayer.point, ourPlayer.currentQuests, enemyPlayer.currentQuests)
             val enemyDomain =
                 board.findDomain(enemyPlayer.point, enemyPlayer.currentQuests, enemyPlayer.currentQuests)
@@ -1744,6 +1758,8 @@ data class BitBoard(val rows: LongArray, val hands: LongArray) {
         return bitField(hands[1])
     }
 
+    fun field(playerId: Int) = bitField(hands[playerId])
+
     private fun getField(y: Int, x: Int): Long {
         return rows[y].and(MASK[x]).shr((6 - x) * 9)
     }
@@ -2229,27 +2245,14 @@ data class GameBoard(val bitBoard: BitBoard) {
     }
 
     fun push(pushes: Pushes): GameBoard {
-        if (pushes.collision()) {
+        if (pushes.collision) {
             return this
         }
-        val firstPush = if (pushes.ourPush.direction.isVertical) {
-            pushes.enemyPush
-        } else {
-            pushes.ourPush
-        }
-        val secondPush = if (pushes.ourPush.direction.isVertical) {
-            pushes.ourPush
-        } else {
-            pushes.enemyPush
-        }
-        val firstPushIsEnemy = pushes.ourPush.direction.isVertical
 
         val rows = bitBoard.rows.clone()
         val hands = bitBoard.hands.clone()
-        val firstPlayerId = if (firstPushIsEnemy) 1 else 0
-        val secondPlayerId = if (firstPushIsEnemy) 0 else 1
-        pushImpl(firstPush, firstPlayerId, rows, hands)
-        pushImpl(secondPush, secondPlayerId, rows, hands)
+        pushImpl(pushes.firstPush, pushes.firstPlayerId, rows, hands)
+        pushImpl(pushes.secondPush, pushes.secondPlayerId, rows, hands)
 
         return GameBoard(BitBoard(rows, hands)).apply {
             parent = this@GameBoard
@@ -2486,31 +2489,15 @@ class Player(
     }
 
     fun push_inPlace(pushes: Pushes, gameBoard: GameBoard) {
-        if (pushes.collision()) {
+        if (pushes.collision) {
             return
         }
         var x = playerX
         var y = playerY
-        val firstPush = if (pushes.ourPush.direction.isVertical) {
-            pushes.enemyPush
-        } else {
-            pushes.ourPush
-        }
-        val secondPush = if (pushes.ourPush.direction.isVertical) {
-            pushes.ourPush
-        } else {
-            pushes.enemyPush
-        }
-        val firstPushField = if (pushes.ourPush.direction.isVertical) {
-            gameBoard.bitBoard.enemyField()
-        } else {
-            gameBoard.bitBoard.ourField()
-        }
-        val secondPushField = if (pushes.ourPush.direction.isVertical) {
-            gameBoard.bitBoard.ourField()
-        } else {
-            gameBoard.bitBoard.enemyField()
-        }
+        val firstPush = pushes.firstPush
+        val secondPush = pushes.secondPush
+        val firstPushField = gameBoard.bitBoard.field(pushes.firstPlayerId)
+        val secondPushField = gameBoard.bitBoard.field(pushes.secondPlayerId)
 
         var questsToTake = 0
 
