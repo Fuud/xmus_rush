@@ -185,7 +185,6 @@ val probablyLogCompilation: () -> Unit = run {
 val rand = Random(777)
 
 val allPushScores = DoubleArray(49 * 49 * 28 * 28)
-val allPushScoresZeros = DoubleArray(49 * 49 * 28 * 28)
 val ourPointsSumScore = DoubleArray(49)
 val scoreForPoints = DoubleArray(49 * 49)
 
@@ -221,8 +220,6 @@ fun performGame() {
 //                """""".trimIndent()
 //            )
 //        )
-
-        // game loop
 
         val allBoards = mutableMapOf<BoardAndElves, MutableList<Pushes>>()
 
@@ -270,7 +267,6 @@ fun performGame() {
                         we,
                         enemy,
                         gameBoard,
-                        step,
                         prevMovesAtThisPosition,
                         numberOfDraws
                     )
@@ -398,55 +394,6 @@ object Quests {
                 }
             }
         }
-    }
-
-    fun getOurNextQuests(itemsTaken: Int): Int {
-        var ourQuests = 0
-        var q = 0
-        var i = 0
-        while (q < 3 && ourIdx + i < ourQuestsInGameOrder.size) {
-            val quest = ourQuestsInGameOrder[ourIdx + i]
-            if (!itemsTaken[quest]) {
-                q++
-                ourQuests = ourQuests.set(quest)
-            }
-            i++
-        }
-        return ourQuests
-    }
-
-
-    fun getEnemyNextQuests(itemsTaken: Int): Int {
-        var enemyQuests = 0
-        var q = 0
-        var i = 0
-        while (q < 3 && enemyIdx + i < enemyQuestsInGameOrder.size) {
-            val quest = enemyQuestsInGameOrder[enemyIdx + i]
-            if (!itemsTaken[quest]) {
-                q++
-                enemyQuests = enemyQuests.set(quest)
-            }
-            i++
-        }
-        return enemyQuests
-    }
-
-    fun takeOur(quest: Int): Int {
-        if (quest != Items.NO_ITEM) {
-            ourQuestsInGameOrder.remove(quest)
-            ourQuestsInGameOrder.add(ourIdx, quest)
-            ourIdx++
-        }
-        return getOurNextQuests(0)
-    }
-
-    fun takeEnemy(quest: Int): Int {
-        if (quest != Items.NO_ITEM) {
-            enemyQuestsInGameOrder.remove(quest)
-            enemyQuestsInGameOrder.add(enemyIdx, quest)
-            enemyIdx++
-        }
-        return getEnemyNextQuests(0)
     }
 
     fun size() = globalQuestsInGameOrder.size
@@ -1078,7 +1025,6 @@ private fun findBestPush(
     we: Player,
     enemy: Player,
     gameBoard: GameBoard,
-    step: Int,
     prevPushesAtThisPosition: List<Pushes>? = null,
     numberOfDraws: Int = 0
 ): OnePush {
@@ -1144,7 +1090,7 @@ private fun selectPivotSolver(
     pushes: List<PushAndMove>
 ): OnePush {
 
-    var threshold = 0.0000001
+    val threshold = 0.0000001
     fun r(value: Double): Double =
         if (value > -threshold && value < threshold) 0.0 else value
 
@@ -2785,8 +2731,7 @@ object Warmup {
         lastPush = findBestPush(
             toPush.we,
             toPush.enemy,
-            toPush.gameBoard,
-            step = 0 // big limit
+            toPush.gameBoard // big limit
         )
         lastBoard = toPush.gameBoard
         lastBoardAndElves = BoardAndElves(toPush.gameBoard, toPush.we.point, toPush.enemy.point)
