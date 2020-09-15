@@ -580,6 +580,7 @@ fun findBestMove(
                         a[pushes.enemyPush.idx][pushes.ourPush.idx] = score
                     }
 
+                    if (printScores) log("will solve ourPoint=$ourPoint enemyPoint=$enemyPoint")
                     probablyPrintScores(OnePush.allPushes, OnePush.allPushes)
                     scoreForPoints[ourPoint.idx * 49 + enemyPoint.idx] = solvePivot(28, 28).score
 
@@ -1240,8 +1241,8 @@ private fun probablyPrintScores(
         enemyActions.joinTo(stringBuilder, " | ")
         stringBuilder.append("\n")
         for (j in (0 until OUR_SIZE)) {
-            stringBuilder.append("#       ")
-            stringBuilder.append(ourActions[j])
+            stringBuilder.append("#")
+            stringBuilder.append(ourActions[j].toString().padStart(9))
             stringBuilder.append(" | ")
             for (i in (0 until ENEMY_SIZE)) {
                 stringBuilder.append((100 * a[i][j]).toInt().toString().padStart(actionToStringSize))
