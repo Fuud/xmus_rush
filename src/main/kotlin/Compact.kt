@@ -1,387 +1,36 @@
-import Replay.downloadReplay
-import Replay.listLastBattles
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator
-import com.fasterxml.jackson.module.kotlin.KotlinModule
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.apache.Apache
-import io.ktor.client.features.cookies.HttpCookies
-import io.ktor.client.features.json.JacksonSerializer
-import io.ktor.client.features.json.JsonFeature
-import io.ktor.client.request.post
-import io.ktor.http.ContentType
-import io.ktor.http.contentType
-import kotlinx.coroutines.runBlocking
 import java.io.File
-import java.util.*
-import java.util.concurrent.TimeUnit
-import kotlin.system.measureNanoTime
 
-val ymlMapper = ObjectMapper(YAMLFactory().apply {
-    this.enable(YAMLGenerator.Feature.LITERAL_BLOCK_STYLE)
-}).apply {
-    this.registerModule(KotlinModule())
-    this.writerWithDefaultPrettyPrinter()
+fun main() {
+    val text = File("src/main/kotlin/Answer.kt").readText()
+
+    val textWithFP = text.replace("private val fingerprints: MutableMap<Fingerprint, DoubleArray> = mutableMapOf()", fingerprintsTxt)
+
+    val compacted = textWithFP
+        .replace("//.*".toRegex(), "")
+        .replace("\\r*\\n\\r*\\n*".toRegex(RegexOption.MULTILINE), "\n")
+        .replace("^\\s*".toRegex(RegexOption.MULTILINE), "")
+        .replace("= ", "=")
+        .replace("([^>]) =".toRegex(), "$1=")
+        .replace(" (", "(")
+        .replace("( ", "(")
+        .replace(", ", ",")
+        .replace(" ,", ",")
+        .replace(": ", ":")
+        .replace("}[\\s\\n]*}".toRegex(RegexOption.MULTILINE), "}}")
+        .replace("\\)[\\s\\n]*\\{".toRegex(RegexOption.MULTILINE), "){")
+        .replace("\\)[ ]*".toRegex(RegexOption.MULTILINE), ")")
+        .replace(" {", "{")
+
+    println("Old size: ${text.length}, with FP ${textWithFP.length}, new size ${compacted.length}")
+
+    File("AnswerCompact.kt").writeText(compacted)
 }
 
-object Replay {
-    val userId = 3871137
-    val login = "fuudtorrentsru@gmail.com"
-    val password = System.getProperty("password")!!
-
-    val httpClient: HttpClient by lazy {
-        HttpClient(Apache) {
-            install(HttpCookies)
-
-            install(JsonFeature) {
-                serializer = JacksonSerializer()
-            }
-        }.apply {
-            runBlocking {
-                this@apply.post<kotlin.Unit>("https://www.codingame.com/services/CodingamerRemoteService/loginSiteV2") {
-                    body = kotlin.collections.listOf(login, password, true)
-                    contentType(io.ktor.http.ContentType.Application.Json)
-                }
-            }
-        }
-    }
-
-    @JvmStatic
-    fun main(args: Array<String>) {
-        val replayId = "487150452"
-
-        val replayFile = File("replays/$replayId.txt")
-
-        val input = if (replayFile.exists()) {
-            replayFile.readText()
-        } else {
-            val replayText = downloadReplay(replayId)
-            replayText
-        }
-
-        while (true) {
-            try {
-                System.setIn(input.byteInputStream())
-                performGame()
-            } catch (t: Throwable) {
-                System.err.println(t)
-            }
-        }
-
-    }
-
-    fun downloadReplay(replayId: String): String {
-        return runBlocking {
-            //get replay
-            val gameInfo = httpClient.post<Game>("https://www.codingame.com/services/gameResult/findByGameId") {
-                body = listOf<Any>(replayId, userId)
-                contentType(ContentType.Application.Json)
-            }
-
-            val names = gameInfo.agents.map { it.index to it.codingamer.pseudo }.toMap()
-
-            val rendered = gameInfo.copy(frames = gameInfo.frames.map {
-                it.copy(
-                    summary = it.summary?.replace("\$0", names[0]!!)?.replace("\$1", names[1]!!)
-                )
-            })
-
-            val stdError = gameInfoToInput(gameInfo)
-            File("replays/$replayId.raw.txt").apply {
-                parentFile.mkdirs()
-                writeText(stdError)
-            }
-            ymlMapper.writeValue(File("replays/$replayId.yml"), rendered)
-            val filtered = stdError.lineSequence().filterNot { it.startsWith("#") }.joinToString(separator = "\n")
-            File("replays/$replayId.txt").writeText(filtered)
-            return@runBlocking filtered
-        }
-    }
-
-    fun listLastBattles(sessionHandle: String): List<String> {
-        return runBlocking {
-            //get replay
-            val gameInfo =
-                httpClient.post<List<GameInfo>>("https://www.codingame.com/services/gamesPlayersRanking/findLastBattlesByTestSessionHandle") {
-                    body = listOf(sessionHandle, null)
-                    contentType(ContentType.Application.Json)
-                }
-
-            gameInfo.map { it.gameId }
-        }
-    }
-}
-
-private fun gameInfoToInput(gameInfo: Game): String {
-    return gameInfo.frames
-        .mapNotNull { it.stderr }
-        .joinToString("\n")
-        .lines()
-        .joinToString("\n")
-}
-
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class Frame(
-    val gameInformation: String? = null,
-    val stdout: String? = null,
-    val stderr: String? = null,
-    val summary: String? = null,
-//    val view: String? = null,
-    val keyframe: String? = null,
-    val agentId: String? = null
-) {
-
-}
-
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class Game(
-    val frames: List<Frame>,
-    val agents: List<Agent>
-)
-
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class Agent(
-    val index: Int,
-    val codingamer: Codingamer
-)
-
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class Codingamer(
-    val pseudo: String
-)
-
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class GameInfo(
-    val gameId: String
-)
-
-object Transformer {
-    @JvmStatic
-    fun main(args: Array<String>) {
-        val name = "1"
-        val from = File("replays/$name.json")
-        val to = File("replays/$name.txt")
-
-        to.writeText(
-            gameInfoToInput(
-                jacksonObjectMapper().readValue<Game>(from)
-            )
-        )
-    }
-}
-
-object DownloadLast {
-    @JvmStatic
-    fun main(args: Array<String>) {
-        val games = listLastBattles("295709813627112ed42900bdc3f5ff26792c2c1b")
-        games.forEach {
-            downloadReplay(it)
-        }
-    }
-}
-
-object ComputeProbabilities {
-    @JvmStatic
-    fun main(args: Array<String>) {
-        val fingerPrints = mutableSetOf<List<Pair<Int, Int>>>()
-        val sum: Array<LongArray> = Array(4) { LongArray(4) }
-        fun printP(oe: Array<IntArray>, count: Int) {
-            for (o in (0 until 3)) {
-                for (e in (0 until 3)) {
-                    print(oe[o][e] * 1.0 / count * 100)
-                    print(" ")
-                }
-                println()
-            }
-            println("-------------------")
-        }
-
-        var replay = 0
-        val map: MutableMap<Fingerprint, Pair<Array<IntArray>, Int>> = mutableMapOf()
-        val threshold = 10_000_000
-        File("replays").listFiles()
-            .filter { it.extension == "txt" && !it.name.contains("raw") }
-            .forEach { file ->
-                val input = Scanner(file)
-                val conditions = readInput(input)
-                val board = conditions.gameBoard
-                val fields: MutableList<BitField> = Point.points
-                    .map { p -> board.bitBoard[p] }
-                    .toMutableList()
-                fields.add(board.bitBoard.ourField())
-                fields.add(board.bitBoard.enemyField())
-                val footprint: List<Pair<Int, Int>> = fields.map {
-                    it.tile.shl(1).or(if (it.item != 0) 1 else 0) to it
-                }.groupBy { it.first }
-                    .map { it.key to it.value.size }
-                    .sortedBy { it.first }
-                if (fingerPrints.add(footprint)) {
-                    replay++
-                    val vi = fields.filter { it.item != 0 }
-                        .map { Integer.bitCount(it.tile.and(0b0101)) }.sum()
-                    val hi = fields.filter { it.item != 0 }
-                        .map { Integer.bitCount(it.tile.and(0b1010)) }.sum()
-                    val v = fields.map { Integer.bitCount(it.tile.and(0b0101)) }.sum()
-                    val h = fields.map { Integer.bitCount(it.tile.and(0b1010)) }.sum()
-
-                    val key = if (vi < hi || (vi == hi && v < h)) {
-                        Fingerprint(vi.toByte(), hi.toByte(), v.toByte(), h.toByte())
-                    } else {
-                        Fingerprint(hi.toByte(), vi.toByte(), h.toByte(), v.toByte())
-                    }
-                    println(footprint)
-                    println(key)
-                    val p = calculateProbabilities(fields, threshold)
-                    for (o in (0 until 4)) {
-                        for (e in (0 until 4)) {
-                            sum[o][e] += p[o][e].toLong()
-                        }
-                    }
-                    printP(p, threshold)
-                    if (map[key] == null) {
-                        map.put(key, Pair(p, 1))
-                    } else {
-                        val previous = map[key]!!
-                        for (o in (0 until 4)) {
-                            for (e in (0 until 4)) {
-                                previous.first[o][e] += p[o][e]
-                            }
-                        }
-                        map.put(key, Pair(previous.first, previous.second + 1))
-                    }
-                }
-            }
-        System.err.println(fingerPrints.size)
-        map.entries
-            .forEach {
-                val count = threshold * it.value.second.toDouble()
-                val f = it.value.first
-                f[0][1] = (f[0][1] + f[1][0]) / 2
-                f[0][2] = (f[0][2] + f[2][0]) / 2
-                f[1][2] = (f[2][1] + f[1][2]) / 2
-                val p00 = f[0][0] / count
-                val p01 = f[0][1] / count
-                val p02 = f[0][2] / count
-                val p11 = f[1][1] / count
-                val p12 = f[1][2] / count
-                val p22 = f[2][2] / count
-                println("${it.key} to doubleArrayOf($p00, $p01, $p02, $p11, $p12, $p22),")
-            }
-    }
-
-    fun calculateProbabilities(fields: MutableList<BitField>, threshold: Int): Array<IntArray> {
-        var count = 1
-        val oe: Array<IntArray> = Array(4) { IntArray(4) }
-        val quests = (0..11).toMutableList()
-        while (count <= threshold) {
-            fields.shuffle(rand)
-            val rows = fields.subList(0, 49)
-                .chunked(7)
-                .map { row ->
-                    var result = 0L
-                    for (i in (0..6)) {
-                        result = result.shl(9).or(row[i].bits)
-                    }
-                    result
-                }.toLongArray()
-            val hands = fields.subList(49, 51)
-                .map { it.bits }
-                .toLongArray()
-            val rboard = GameBoard(BitBoard(rows, hands))
-
-            val ourQuest = selectQuests(quests)
-            val enemyQuest = selectQuests(quests)
-            val ourD = rboard.findDomain(
-                Point.point(rand.nextInt(7), rand.nextInt(7)),
-                ourQuest,
-                enemyQuest
-            )
-            val enemyD = rboard.findDomain(
-                Point.point(rand.nextInt(7), rand.nextInt(7)),
-                ourQuest,
-                enemyQuest
-            )
-            oe[ourD.getOurQuestsCount][enemyD.getEnemyQuestsCount] += 1
-            count++
-        }
-        return oe
-    }
-
-    private fun selectQuests(quests: MutableList<Int>): Int {
-        quests.shuffle(rand)
-        var ourQuest = 0
-        quests.subList(0, 3).forEach {
-            ourQuest = ourQuest.set(it)
-        }
-        return ourQuest
-    }
-
-}
-
-object CountStop {
-    @JvmStatic
-    fun main(args: Array<String>) {
-        File("replays").listFiles()
-            .filter { it.extension == "yml" }
-            .flatMap { file ->
-                val firstLine = file.readLines().indexOfFirst { it.contains("step 1") }
-                if (firstLine < 0) {
-                    emptyList<Pair<String, String>>()
-                } else {
-                    file.readText()
-                        .split("step")
-//                        .drop(6)
-                        .filter { it.contains("stop compute") }
-                        .map { "${file.name} ${it.lines().first()} " +
-                                "${it.lines().firstOrNull { it.contains("stop") }} " +
-                                "${it.lines().first{it.contains("move space")}} " +
-                                "${it.lines().firstOrNull{it.contains("Compilation")}} " +
-                                "${it.lines().firstOrNull{it.contains("Move")}} " }
-                }
-            }
-            .forEach {
-                println(it)
-            }
-    }
-}
-
-object BestMoveOpt {
-    @JvmStatic
-    fun main(args: Array<String>) {
-        val input = Scanner(File("replays/486599520.txt"))
-
-        repeat(111){
-            readInput(input)
-        }
-
-        val (turnType, gameBoard, we, enemy) = readInput(input)
-
-        repeat(1000000) {
-            val time = measureNanoTime {
-                val bestMove = findBestMove(
-                    gameBoard = gameBoard,
-                    we = we,
-                    step = 111,
-                    enemy = enemy
-                )
-
-                println(bestMove)
-            }
-            println("time taken: ${TimeUnit.NANOSECONDS.toMillis(time)} ms")
-        }
-    }
-}
-
-//we counted we counted our little fingers were tired
-// @formatter:off
-private val fingerprints: Map<Fingerprint, DoubleArray> = run {
+val fingerprintsTxt = """
+private val fingerprints: MutableMap<Fingerprint, DoubleArray> = run {
 fun da(vararg e: Double) = doubleArrayOf(*e)
 fun fp(vq: Byte, hq: Byte, v: Byte, h: Byte) = Fingerprint(vq, hq, v, h)    
-mapOf(
+mutableMapOf(
 fp(20, 28, 58, 58) to da(0.6700451, 0.1357889, 0.0114748, 0.0286995, 0.0026203, 2.825E-4),
 fp(20, 30, 48, 70) to da(0.6290363, 0.1465372, 0.015452, 0.0358876, 0.0041706, 5.861E-4),
 fp(20, 30, 54, 62) to da(0.6629998, 0.13738785, 0.01242025, 0.0297069, 0.0029437, 3.562E-4),
@@ -735,4 +384,5 @@ fp(22, 34, 62, 54) to da(0.6534019, 0.1384729, 0.0145824, 0.0307797, 0.0035497, 
 fp(26, 36, 40, 76) to da(0.6017983, 0.1500132, 0.0207993, 0.0392045, 0.0060195, 0.0011462),
 fp(24, 34, 52, 64) to da(0.6425185, 0.1416027, 0.0153853, 0.0327583, 0.0039324, 6.011E-4)
 )
-}
+}    
+""".trimIndent()

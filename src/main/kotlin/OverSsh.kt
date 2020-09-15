@@ -25,7 +25,7 @@ object OverSsh {
 
     class RemoteExecution: Serializable, Runnable{
         override fun run() {
-            Replay.main(emptyArray())
+            BestMoveOpt.main(emptyArray())
         }
 
     }
