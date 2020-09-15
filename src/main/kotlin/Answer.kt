@@ -187,7 +187,7 @@ val rand = Random(777)
 val allPushScores = DoubleArray(49 * 49 * 28 * 28)
 val allPushScoresZeros = DoubleArray(49 * 49 * 28 * 28)
 val ourPointsSumScore = DoubleArray(49)
-val scoreForPoints = DoubleArray(49*49)
+val scoreForPoints = DoubleArray(49 * 49)
 
 val moveScores = Point.points
     .map { it to 0.0 }
@@ -461,6 +461,8 @@ object Quests {
     }
 }
 
+val ourPlayersCache = Array(49) { Player(0, 0, 0, 0, 0, 0, 0) }
+val enemyPlayersCache = Array(49) { Player(0, 0, 0, 0, 0, 0, 0) }
 
 fun findBestMove(
     gameBoard: GameBoard,
@@ -470,7 +472,7 @@ fun findBestMove(
 ): PathElem? {
     log("findBestMove")
     val startTime = System.nanoTime()
-    val timeLimit = if (noTimeLimit) Long.MAX_VALUE else TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 52)
+    val timeLimit = if (noTimeLimit) Long.MAX_VALUE else TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 62)
 
     val ourPaths = gameBoard.findPaths(we, we.currentQuests)
     val ourItemsTaken = ourPaths.maxWith(compareBy { Integer.bitCount(it.itemsTakenSet) })!!.itemsTakenSet
@@ -525,26 +527,30 @@ fun findBestMove(
                 count++
 
                 val newBoard = gameBoard.push(pushes)
-                for (ourPoint in ourEnds) {
+
+                for (i in (0 until OUR_ENDS_SIZE)){
+                    val point = ourEnds[i]
+                    val player = ourPlayersCache[i]
+                    player.copy_inPlace(we, point = point)
+                    player.push_inPlace(pushes, gameBoard)
+                }
+                for (i in (0 until ENEMY_ENDS_SIZE)){
+                    val point = enemyEnds[i]
+                    val player = enemyPlayersCache[i]
+                    player.copy_inPlace(we, point = point)
+                    player.push_inPlace(pushes, gameBoard)
+                }
+                for (i in (0 until OUR_ENDS_SIZE)){
                     if (System.nanoTime() - startTime > timeLimit && count > 0) {
                         log("stop computePushes, computed $count pushes")
                         aborted = true
                         break
                     }
-                    we.push(
-                        startX = ourPoint.x,
-                        startY = ourPoint.y,
-                        pushes = pushes,
-                        gameBoard = gameBoard
-                    ) { we ->
-
-                        for (enemyPoint in enemyEnds) {
-                            enemy.push(
-                                startX = enemyPoint.x,
-                                startY = enemyPoint.y,
-                                pushes = pushes,
-                                gameBoard = gameBoard
-                            ) { enemy ->
+                    val ourPoint = ourEnds[i]
+                    ourPlayersCache[i].let { we ->
+                        for (i in (0 until ENEMY_ENDS_SIZE)){
+                            val enemyPoint = enemyEnds[i]
+                            enemyPlayersCache[i].let { enemy ->
                                 val score = PushAndMove.calcScore(pushes, newBoard, we, enemy)
                                 ourPointsSumScore[ourPoint.idx] += score
                                 moveScores[ourPoint] = moveScores[ourPoint]!! + score
@@ -1147,57 +1153,57 @@ private fun selectPivotSolver(
 
     val result = solvePivot(ENEMY_SIZE, OUR_SIZE)
 
-    run{
+    run {
 
         val (score, ourStrategy, enemyStrategy) = result
 
         val selection = rand.nextDouble()
 
-    log(
-        "OurStrategy: ${
-            ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
-                .sortedByDescending { it.second }
-                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
-        }"
-    )
-    log(
-        "EnemyStrategy: ${
-            enemyStrategy.mapIndexed { idx, score -> enemyPushes[idx] to score }
-                .sortedByDescending { it.second }
-                .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
-        }"
-    )
+        log(
+            "OurStrategy: ${
+                ourStrategy.mapIndexed { idx, score -> ourPushes[idx] to score }
+                    .sortedByDescending { it.second }
+                    .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+            }"
+        )
+        log(
+            "EnemyStrategy: ${
+                enemyStrategy.mapIndexed { idx, score -> enemyPushes[idx] to score }
+                    .sortedByDescending { it.second }
+                    .joinToString { "${it.first}=${twoDigitsAfterDotFormat.format(it.second)}" }
+            }"
+        )
 
-    log("selection=$selection ourSum=${ourStrategy.sum()} enemySum=${enemyStrategy.sum()}")
+        log("selection=$selection ourSum=${ourStrategy.sum()} enemySum=${enemyStrategy.sum()}")
 
-    run {
-        var threshold = -1.0
-        val best = ourStrategy
-            .mapIndexed { idx, score -> ourPushes[idx] to score }
-            .sortedByDescending { it.second }
-            .takeWhile {
-                if (threshold < 0) {
-                    threshold = it.second * Tweaks.nearStrategiesThreshold
-                    true
-                } else {
-                    it.second > threshold
+        run {
+            var threshold = -1.0
+            val best = ourStrategy
+                .mapIndexed { idx, score -> ourPushes[idx] to score }
+                .sortedByDescending { it.second }
+                .takeWhile {
+                    if (threshold < 0) {
+                        threshold = it.second * Tweaks.nearStrategiesThreshold
+                        true
+                    } else {
+                        it.second > threshold
+                    }
+                }
+            val norm = best.sumByDouble { it.second }
+            var currentSum = 0.0
+            if (best.size > 1) {
+                log("${best.size} near strategies")
+            }
+            for (idx in best.indices) {
+                currentSum += best[idx].second
+                if (currentSum >= selection * norm) {
+                    if (idx > 0) {
+                        log("select not the first strategy")
+                    }
+                    return best[idx].first
                 }
             }
-        val norm = best.sumByDouble { it.second }
-        var currentSum = 0.0
-        if (best.size > 1) {
-            log("${best.size} near strategies")
         }
-        for (idx in best.indices) {
-            currentSum += best[idx].second
-            if (currentSum >= selection * norm) {
-                if (idx > 0) {
-                    log("select not the first strategy")
-                }
-                return best[idx].first
-            }
-        }
-    }
     }
 
     throw IllegalStateException("aaaaa")
@@ -1931,93 +1937,93 @@ data class GameBoard(val bitBoard: BitBoard) {
     operator fun get(point: Point) = bitBoard[point]
 
     fun findPaths(player: Player, quests: Int): List<PathElem> {
-            fun coordInVisited(newPoint: Point, newItemsSet: Int): Int {
-                val x = newPoint.x
-                val y = newPoint.y
-                var firstItem = 0
-                var secondItem = 0
-                var thirdItem = 0
-                val firstQuestIdx = quests.nextSetBit(0)
-                if (firstQuestIdx >= 0) {
-                    if (newItemsSet[firstQuestIdx]) {
-                        firstItem = 1
+        fun coordInVisited(newPoint: Point, newItemsSet: Int): Int {
+            val x = newPoint.x
+            val y = newPoint.y
+            var firstItem = 0
+            var secondItem = 0
+            var thirdItem = 0
+            val firstQuestIdx = quests.nextSetBit(0)
+            if (firstQuestIdx >= 0) {
+                if (newItemsSet[firstQuestIdx]) {
+                    firstItem = 1
+                }
+                val secondQuestIdx = quests.nextSetBit(firstQuestIdx + 1)
+                if (secondQuestIdx >= 0) {
+                    if (newItemsSet[secondQuestIdx]) {
+                        secondItem = 1
                     }
-                    val secondQuestIdx = quests.nextSetBit(firstQuestIdx + 1)
-                    if (secondQuestIdx >= 0) {
-                        if (newItemsSet[secondQuestIdx]) {
-                            secondItem = 1
-                        }
 
-                        val thirdQuestIdx = quests.nextSetBit(secondQuestIdx + 1)
-                        if (thirdQuestIdx >= 0) {
-                            if (newItemsSet[thirdQuestIdx]) {
-                                thirdItem = 1
-                            }
+                    val thirdQuestIdx = quests.nextSetBit(secondQuestIdx + 1)
+                    if (thirdQuestIdx >= 0) {
+                        if (newItemsSet[thirdQuestIdx]) {
+                            thirdItem = 1
                         }
                     }
                 }
-
-                return (((x * 7 + y) * 2 + firstItem) * 2 + secondItem) * 2 + thirdItem
             }
 
-            val initialItem = bitBoard[player.point].item
-            val initial =
-                if (initialItem > 0 && quests[initialItem]) {
-                    PathElem(player.point, 0.set(initialItem), null, null)
-                } else {
-                    PathElem(player.point, 0, null, null)
-                }
+            return (((x * 7 + y) * 2 + firstItem) * 2 + secondItem) * 2 + thirdItem
+        }
 
-
-            pooledList1.clear()
-            pooledList2.clear()
-            var front = pooledList1
-            front.add(initial)
-
-            val result = mutableListOf<PathElem>()
-
-            val visited =
-                BitSet((((6 * 7 + 6) * 2 + 1) * 2 + 1) * 2 + 1) // (((x * 7 + y) * 2 + firstItem) * 2 + secondItem) * 2 + thirdItem
-            visited.set(coordInVisited(initial.point, initial.itemsTakenSet))
-            result.add(initial)
-
-            repeat(20) {
-                if (front.isEmpty()) {
-                    return@repeat
-                }
-
-                val newFront = if (front === pooledList1) pooledList2 else pooledList1
-                newFront.clear()
-
-                for (pathElem in front) {
-                    for (direction in Direction.allDirections) {
-                        if (!pathElem.point.can(direction)) {
-                            continue
-                        }
-                        val newPoint = pathElem.point.move(direction)
-                        val field = bitBoard[newPoint]
-                        val newItems = if (field.containsQuestItem(player.playerId, quests)) {
-                            pathElem.itemsTakenSet.set(field.item.absoluteValue)
-                        } else {
-                            pathElem.itemsTakenSet
-                        }
-
-                        val coordInVisisted = coordInVisited(newPoint, newItems)
-
-                        if (visited.get(coordInVisisted)) {
-                            continue
-                        }
-
-                        val newPathElem = PathElem(newPoint, newItems, pathElem, direction)
-                        visited.set(coordInVisisted)
-                        result.add(newPathElem)
-                        newFront.add(newPathElem)
-                    }
-                }
-                front = newFront
+        val initialItem = bitBoard[player.point].item
+        val initial =
+            if (initialItem > 0 && quests[initialItem]) {
+                PathElem(player.point, 0.set(initialItem), null, null)
+            } else {
+                PathElem(player.point, 0, null, null)
             }
 
-            return result
+
+        pooledList1.clear()
+        pooledList2.clear()
+        var front = pooledList1
+        front.add(initial)
+
+        val result = mutableListOf<PathElem>()
+
+        val visited =
+            BitSet((((6 * 7 + 6) * 2 + 1) * 2 + 1) * 2 + 1) // (((x * 7 + y) * 2 + firstItem) * 2 + secondItem) * 2 + thirdItem
+        visited.set(coordInVisited(initial.point, initial.itemsTakenSet))
+        result.add(initial)
+
+        repeat(20) {
+            if (front.isEmpty()) {
+                return@repeat
+            }
+
+            val newFront = if (front === pooledList1) pooledList2 else pooledList1
+            newFront.clear()
+
+            for (pathElem in front) {
+                for (direction in Direction.allDirections) {
+                    if (!pathElem.point.can(direction)) {
+                        continue
+                    }
+                    val newPoint = pathElem.point.move(direction)
+                    val field = bitBoard[newPoint]
+                    val newItems = if (field.containsQuestItem(player.playerId, quests)) {
+                        pathElem.itemsTakenSet.set(field.item.absoluteValue)
+                    } else {
+                        pathElem.itemsTakenSet
+                    }
+
+                    val coordInVisisted = coordInVisited(newPoint, newItems)
+
+                    if (visited.get(coordInVisisted)) {
+                        continue
+                    }
+
+                    val newPathElem = PathElem(newPoint, newItems, pathElem, direction)
+                    visited.set(coordInVisisted)
+                    result.add(newPathElem)
+                    newFront.add(newPathElem)
+                }
+            }
+            front = newFront
+        }
+
+        return result
     }
 
     fun push(push: OnePush, player: Player): GameBoard {
@@ -2452,7 +2458,7 @@ class Player(
             }
         }
         return if (x != playerX || y != playerY) {
-            copy(playerX = x, playerY = y) {
+            copy(point = Point.point(x, y)) {
                 it.takeQuests(questsToTake, block)
             }
         } else {
@@ -2468,19 +2474,18 @@ class Player(
     }
 
     internal inline fun <T> push(
-        startX: Int,
-        startY: Int,
+        startPoint: Point,
         pushes: Pushes,
         gameBoard: GameBoard,
         crossinline block: (Player) -> T
     ): T {
-        return copy(playerX = startX, playerY = startY) {
+        return copy(point = startPoint) {
             it.push_inPlace(pushes, gameBoard)
             block(it)
         }
     }
 
-    private fun push_inPlace(pushes: Pushes, gameBoard: GameBoard) {
+    fun push_inPlace(pushes: Pushes, gameBoard: GameBoard) {
         if (pushes.collision()) {
             return
         }
@@ -2597,8 +2602,7 @@ class Player(
 
     inline fun <T> copy(
         numPlayerCards: Int = this.numPlayerCards,
-        playerX: Int = this.playerX,
-        playerY: Int = this.playerY,
+        point: Point = this.point,
         alreadyTakenQuests: Int = this.alreadyTakenQuests,
         currentQuests: Int = this.currentQuests,
         lastQuestIdx: Int = this.lastQuestIdx,
@@ -2608,19 +2612,37 @@ class Player(
         indexInCache++
         val result = block(
             cache[idx].apply {
-                this.playerId = this@Player.playerId
-                this.numPlayerCards = numPlayerCards
-                this.playerX = playerX
-                this.playerY = playerY
-                this.alreadyTakenQuests = alreadyTakenQuests
-                this.currentQuests = currentQuests
-                this.lastQuestIdx = lastQuestIdx
-                this.point = Point.point(playerX, playerY)
-                this.currentQuestsCount = currentQuests.bitCount()
+                this.copy_inPlace(
+                    this@Player,
+                    numPlayerCards,
+                    point,
+                    alreadyTakenQuests,
+                    currentQuests,
+                    lastQuestIdx
+                )
             }
         )
         indexInCache--
         return result
+    }
+
+    fun copy_inPlace(
+        orig: Player,
+        numPlayerCards: Int = orig.numPlayerCards,
+        point: Point = orig.point,
+        alreadyTakenQuests: Int = orig.alreadyTakenQuests,
+        currentQuests: Int = orig.currentQuests,
+        lastQuestIdx: Int = orig.lastQuestIdx
+    ) {
+        this.playerId = orig.playerId
+        this.numPlayerCards = numPlayerCards
+        this.playerX = point.x
+        this.playerY = point.y
+        this.alreadyTakenQuests = alreadyTakenQuests
+        this.currentQuests = currentQuests
+        this.lastQuestIdx = lastQuestIdx
+        this.point = point
+        this.currentQuestsCount = currentQuests.bitCount()
     }
 
     fun escapeCopy(): Player {

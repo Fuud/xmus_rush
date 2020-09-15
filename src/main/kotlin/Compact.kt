@@ -6,6 +6,7 @@ fun main() {
     val textWithFP = text.replace("private val fingerprints: MutableMap<Fingerprint, DoubleArray> = mutableMapOf()", fingerprintsTxt)
 
     val compacted = textWithFP
+        .replace("//.*".toRegex(), "")
         .replace("\\r*\\n\\r*\\n*".toRegex(RegexOption.MULTILINE), "\n")
         .replace("^\\s*".toRegex(RegexOption.MULTILINE), "")
         .replace("= ", "=")
@@ -15,6 +16,8 @@ fun main() {
         .replace(", ", ",")
         .replace(" ,", ",")
         .replace(": ", ":")
+        .replace("}[\\s\\n]*}".toRegex(RegexOption.MULTILINE), "}}")
+        .replace("\\)[\\s\\n]*\\{".toRegex(RegexOption.MULTILINE), "){")
 
     println("Old size: ${text.length}, with FP ${textWithFP.length}, new size ${compacted.length}")
 
