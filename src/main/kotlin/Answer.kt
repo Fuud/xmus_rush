@@ -418,7 +418,7 @@ fun findBestMove(
 ): PathElem? {
     log("findBestMove")
     val startTime = System.nanoTime()
-    val timeLimit = if (noTimeLimit) Long.MAX_VALUE else TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 55)
+    val timeLimit = if (noTimeLimit) Long.MAX_VALUE else TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 45)
 
     val ourPaths = gameBoard.findPaths(we, we.currentQuests)
     val ourItemsTaken = ourPaths.maxWith(compareBy { Integer.bitCount(it.itemsTakenSet) })!!.itemsTakenSet
@@ -494,9 +494,9 @@ fun findBestMove(
                     val newBoard = gameBoardCache[pushes.idx]
                     enemyPlayersCache[pushes.idx * ENEMY_ENDS_SIZE + enemyPointIdx].let { enemy ->
 
-                    for (ourPointIdx in (0 until OUR_ENDS_SIZE)) {
-                        val ourPoint = ourEnds[ourPointIdx]
-                        ourPlayersCache[pushes.idx * OUR_ENDS_SIZE + ourPointIdx].let { we ->
+                        for (ourPointIdx in (0 until OUR_ENDS_SIZE)) {
+                            val ourPoint = ourEnds[ourPointIdx]
+                            ourPlayersCache[pushes.idx * OUR_ENDS_SIZE + ourPointIdx].let { we ->
                                 val score = PushAndMove.calcScore(pushes, newBoard, we, enemy)
                                 ourPointsSumScore[ourPoint.idx] += score
                                 moveScores[ourPoint.idx] += score
@@ -1348,7 +1348,10 @@ private fun filterOutPushes(
     } else {
         prevOurPushes!!
         val isDraw = numberOfDraws != 0
-        val weLose = we.numPlayerCards > enemy.numPlayerCards
+        val weLoseOrEarlyDraw = we.numPlayerCards > enemy.numPlayerCards ||
+                (we.numPlayerCards == enemy.numPlayerCards &&
+                        pushesRemain > Tweaks.earlyDrawPushesRemain &&
+                        numberOfDraws > Tweaks.earlyDrawNumberOfDraws)
         var firstRandomTheSame = false
         val enemyType = if (isDraw) {
             var type: RepetitionType
@@ -1359,7 +1362,7 @@ private fun filterOutPushes(
                 type = drawRepetitions[numberOfDraws]
                 log("enemy draw type $type")
             }
-            if (weLose && type == RANDOM_MOVE && numberOfDraws > 2) {
+            if (weLoseOrEarlyDraw && type == RANDOM_MOVE && numberOfDraws > 2) {
                 val lastThreeIsRandom = drawRepetitions[numberOfDraws - 1] == RANDOM_MOVE &&
                         drawRepetitions[numberOfDraws - 2] == RANDOM_MOVE &&
                         (drawRepetitions[numberOfDraws] == RANDOM_MOVE ||
@@ -1378,7 +1381,7 @@ private fun filterOutPushes(
         } else {
             val numberOfRepeats = prevPushesAtThisPosition.filterNot { it.collision }.size
             if (nonDrawRepetitions[numberOfRepeats] == UNKNOWN && numberOfRepeats > 0) {
-                val type = nonDrawRepetitions[numberOfRepeats -1]
+                val type = nonDrawRepetitions[numberOfRepeats - 1]
                 log("I guess that enemy cycle type is $type")
                 type
             } else {
@@ -1387,7 +1390,7 @@ private fun filterOutPushes(
                 type
             }
         }
-        val excludeOur = weLose
+        val excludeOur = weLoseOrEarlyDraw
                 && (numberOfDraws > 2 || numberOfDraws == 0)
                 && (enemyType == SAME_MOVE && !firstRandomTheSame)
         if (excludeOur) {
@@ -1761,7 +1764,6 @@ data class BitBoard(val rows: LongArray, val hands: LongArray) {
 }
 
 data class GameBoard(val bitBoard: BitBoard) {
-    private val cachedPaths = arrayOfNulls<MutableList<PathElem>>(2)
     val domains = Domains()
     private var parent: GameBoard? = null
     private var pushesFromParent: Pushes? = null
@@ -2869,9 +2871,11 @@ object Items {
 }
 
 object Tweaks {
-    val scoreCollisionOnlyForPreviousPushes = false
+    val scoreCollisionOnlyForPreviousPushes = true
     val nearStrategiesThreshold = 1.0
     val useRoadsForSecondaryScore = true
+    val earlyDrawPushesRemain = 50
+    val earlyDrawNumberOfDraws = 3
 }
 
 //we counted we counted our little fingers were tired
