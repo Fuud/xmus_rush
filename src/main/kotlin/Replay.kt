@@ -7,14 +7,12 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.apache.Apache
-import io.ktor.client.features.cookies.HttpCookies
-import io.ktor.client.features.json.JacksonSerializer
-import io.ktor.client.features.json.JsonFeature
-import io.ktor.client.request.post
-import io.ktor.http.ContentType
-import io.ktor.http.contentType
+import io.ktor.client.*
+import io.ktor.client.engine.apache.*
+import io.ktor.client.features.cookies.*
+import io.ktor.client.features.json.*
+import io.ktor.client.request.*
+import io.ktor.http.*
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.util.*
@@ -52,7 +50,7 @@ object Replay {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        val replayId = "487150452"
+        val replayId = "487415265"
 
         val replayFile = File("replays/$replayId.txt")
 
