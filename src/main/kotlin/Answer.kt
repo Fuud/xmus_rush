@@ -1079,7 +1079,7 @@ fun computeEstimate(
     }
 }
 
-val a = Array(28) { DoubleArray(28) { 0.0 } } // interior[column][row]
+val a = Array(49) { DoubleArray(49) { 0.0 } } // interior[column][row]
 val stringBuilder = StringBuilder(10_000)
 
 private val printScores = java.lang.Boolean.getBoolean("printScores")
@@ -2874,7 +2874,7 @@ object Tweaks {
     val scoreCollisionOnlyForPreviousPushes = true
     val nearStrategiesThreshold = 1.0
     val useRoadsForSecondaryScore = true
-    val earlyDrawPushesRemain = 50
+    val earlyDrawPushesRemain = 75 //75 for turnoff
     val earlyDrawNumberOfDraws = 3
 }
 
