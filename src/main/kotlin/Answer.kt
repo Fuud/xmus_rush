@@ -418,7 +418,7 @@ fun findBestMove(
 ): PathElem? {
     log("findBestMove")
     val startTime = System.nanoTime()
-    val timeLimit = if (noTimeLimit) Long.MAX_VALUE else TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 45)
+    val timeLimit = if (noTimeLimit) Long.MAX_VALUE else TimeUnit.MILLISECONDS.toNanos(if (step == 0) 500 else 55)
 
     val ourPaths = gameBoard.findPaths(we, we.currentQuests)
     val ourItemsTaken = ourPaths.maxWith(compareBy { Integer.bitCount(it.itemsTakenSet) })!!.itemsTakenSet
